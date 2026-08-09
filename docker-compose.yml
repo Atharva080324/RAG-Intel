@@ -1,0 +1,79 @@
+version: '3.9'
+services:
+  web:
+    build: ./
+    container_name: rag-backend
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    volumes:
+      - ./:/usr/src/app
+      - uploads_data:/usr/src/app/uploads
+      - model_cache:/models/huggingface
+    ports:
+      - '8000:8000'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/rag_db
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=change-me
+      - ACCESS_TOKEN_EXPIRE_MINUTES=60
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - HF_TOKEN=${HF_TOKEN:?Set HF_TOKEN in .env}
+      - HF_HOME=/models/huggingface
+
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: rag-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rag_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rag_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  worker:
+    build: ./
+    container_name: rag-worker
+    command: celery -A app.workers.celery_app worker --loglevel=info
+    volumes:
+      - ./:/usr/src/app
+      - uploads_data:/usr/src/app/uploads
+      - model_cache:/models/huggingface
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/rag_db
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=change-me
+      - ACCESS_TOKEN_EXPIRE_MINUTES=60
+      - HF_TOKEN=${HF_TOKEN:?Set HF_TOKEN in .env}
+      - HF_HOME=/models/huggingface
+
+volumes:
+  postgres_data:
+  uploads_data:
+  model_cache:

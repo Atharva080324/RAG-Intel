@@ -1,0 +1,91 @@
+services:
+  - type: web
+    name: rag-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: ALGORITHM
+        value: HS256
+      - key: PGVECTOR_EXTENSION
+        value: vector
+      - key: MAX_UPLOAD_SIZE_BYTES
+        value: "10485760"
+      - key: ALLOWED_UPLOAD_EXTENSIONS
+        value: pdf,txt,md
+      - key: ENVIRONMENT
+        value: production
+      - key: HF_TOKEN
+        sync: false
+      - key: HF_HOME
+        value: /tmp/huggingface
+      - key: EMBEDDING_MODEL
+        value: BAAI/bge-small-en-v1.5
+      - key: EMBEDDING_DIMENSION
+        value: "384"
+      - key: EMBEDDING_BATCH_SIZE
+        value: "32"
+      - key: RERANKER_MODEL
+        value: cross-encoder/ms-marco-MiniLM-L6-v2
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: CELERY_BROKER_URL
+        sync: false
+      - key: CELERY_RESULT_BACKEND
+        sync: false
+
+  - type: worker
+    name: rag-worker
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.workers.celery_app worker --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: ALGORITHM
+        value: HS256
+      - key: HF_TOKEN
+        sync: false
+      - key: HF_HOME
+        value: /tmp/huggingface
+      - key: EMBEDDING_MODEL
+        value: BAAI/bge-small-en-v1.5
+      - key: EMBEDDING_DIMENSION
+        value: "384"
+      - key: EMBEDDING_BATCH_SIZE
+        value: "32"
+      - key: RERANKER_MODEL
+        value: cross-encoder/ms-marco-MiniLM-L6-v2
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: CELERY_BROKER_URL
+        sync: false
+      - key: CELERY_RESULT_BACKEND
+        sync: false
