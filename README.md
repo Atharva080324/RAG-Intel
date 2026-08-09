@@ -164,6 +164,4 @@ Planned next: streamed responses, richer metadata filters, broader table operati
 - Never place OAuth client secrets, database URLs, Redis credentials, tokens, or production JWT secrets in Git.
 - Google OAuth state is stored in Redis with a 10-minute expiry and consumed after use.
 
-## License
 
-Add a license before publishing if you want others to reuse this project.
