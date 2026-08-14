@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, JSON, Text
+from sqlalchemy import Column, Computed, Integer, String, ForeignKey, DateTime, JSON, Text
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
@@ -15,7 +15,11 @@ class Chunk(Base):
     chunk_type = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     chunk_metadata = Column("metadata", JSON, nullable=True)
-    search_vector = Column(TSVECTOR, nullable=True)
+    search_vector = Column(
+        TSVECTOR,
+        Computed("to_tsvector('english', coalesce(content, ''))", persisted=True),
+        nullable=True,
+    )
     embedding = Column(Vector(settings.embedding_dimension), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

@@ -58,11 +58,30 @@ async def stream_answer(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Completed document with indexed content not found")
     prompt = result["prompt"]
     citations = result["citations"]
-    workflow = {"intent": result["intent"], "rewrite_attempts": result["attempts"], "relevance_score": round(result["relevance_score"], 3)}
+    insufficient_evidence = result["relevance_score"] < settings.min_grounding_score
+    workflow = {
+        "intent": result["intent"],
+        "rewrite_attempts": result["attempts"],
+        "relevance_score": round(result["relevance_score"], 3),
+        "minimum_grounding_score": settings.min_grounding_score,
+        "answer_mode": "insufficient_evidence" if insufficient_evidence else "grounded_answer",
+        "retrieval": result.get("retrieval_diagnostics", {}),
+    }
 
     async def event_stream() -> AsyncIterator[bytes]:
         try:
             yield _sse("workflow", workflow)
+            if insufficient_evidence:
+                yield _sse(
+                    "token",
+                    {
+                        "text": "I could not find enough relevant evidence in this document to answer that reliably. "
+                        "Try naming a topic, section, person, or page from the uploaded document."
+                    },
+                )
+                yield _sse("citations", citations)
+                yield _sse("done", {})
+                return
             async for token in stream_groq_answer(prompt):
                 yield _sse("token", {"text": token})
             yield _sse("citations", citations)

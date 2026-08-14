@@ -7,7 +7,7 @@ The project is designed as a production-minded backend rather than a single-docu
 ## Highlights
 
 - Asynchronous FastAPI API with Celery/Redis background ingestion and job polling
-- PDF, TXT, and Markdown upload support with content-hash deduplication
+- PDF, TXT, and Markdown upload support with content-hash deduplication; files are stored as bytea blobs in the shared PostgreSQL database so the separate worker can fetch them (Cloudflare R2 optional)
 - PDF text extraction with PyMuPDF, table extraction with pdfplumber, and OCR fallback through Tesseract
 - Page, text, and table chunks persisted in PostgreSQL with pgvector embeddings and full-text search vectors
 - Hybrid retrieval that fuses vector similarity and PostgreSQL lexical search, then reranks candidates with a cross-encoder
@@ -26,9 +26,9 @@ FastAPI API ── JWT / Google OAuth 2.0
    |                 |
    |                 +── Redis (OAuth state, rate limiting)
    |
-   +── Upload -> PostgreSQL job -> Celery worker
+   +── Upload -> shared PostgreSQL storage (bytea) -> job -> Celery worker
    |                              |
-   |                              +── parse PDF/text, extract tables/OCR
+   |                              +── fetch bytes from DB, parse PDF/text, OCR
    |                              +── chunk + embed -> PostgreSQL + pgvector
    |
    +── Question -> LangGraph corrective workflow
@@ -48,14 +48,14 @@ FastAPI API ── JWT / Google OAuth 2.0
 | Parsing and analytics | PyMuPDF, pdfplumber, Tesseract, pandas |
 | Retrieval and orchestration | Hugging Face Inference embeddings, PostgreSQL FTS, cross-encoder reranking, LangGraph |
 | Authentication | bcrypt, JWT, Google OAuth 2.0 |
-| Operations | Docker Compose, Render, Streamlit test UI |
+| Operations | Docker Compose, Render, PostgreSQL bytea storage, Streamlit UI |
 
 ## Project structure
 
 ```text
 app/
   routers/       # auth, documents, jobs, and question endpoints
-  services/      # parsing, ingestion, retrieval, reranking, analytics, users
+  services/      # parsing, ingestion, retrieval, reranking, storage, analytics, users
   workers/       # Celery application and document-ingestion task
   models/        # users, documents, pages, chunks, jobs
   schemas/       # API request and response contracts
@@ -133,7 +133,9 @@ The interactive API docs are available at `http://127.0.0.1:8000/docs`.
 | `GET /documents/` | List the authenticated user's documents |
 | `GET /jobs/{job_id}` | Poll ingestion progress and failure details |
 | `POST /questions/analyze` | Retrieve evidence, generate an answer, and return citations |
+| `POST /questions/stream` | Stream a grounded answer and citations as server-sent events |
 | `GET /health` | Liveness check |
+| `GET /ready` | Dependency readiness check for PostgreSQL and Redis |
 
 All document and question routes require `Authorization: Bearer <token>`.
 
@@ -148,13 +150,34 @@ All document and question routes require `Authorization: Bearer <token>`.
 
 ## Deployment
 
-`docker-compose.yml` starts the API, Celery worker, PostgreSQL/pgvector, and Redis. `render.yaml` defines corresponding Render web and worker services for managed PostgreSQL and Redis providers.
+`docker-compose.yml` starts the API, Celery worker, PostgreSQL/pgvector, and Redis for local development. In local/docker-compose the API and worker share an `uploads/` volume, so uploads are written to the local `LocalStorage` fallback (`app/services/storage.py`).
 
-Before a production deployment, set all secret environment variables in the host dashboard, set a strong `SECRET_KEY`, configure the production Google redirect URI, and ensure the `vector` extension is available on the database.
+`render.yaml` is a Render Blueprint that deploys three services: `rag-api` (FastAPI), `rag-worker` (Celery), and `rag-streamlit` (the web UI). Migrations run through the API service's `preDeployCommand: alembic upgrade head` rather than in the start command.
+
+**Shared storage (default: PostgreSQL bytea, zero billing).** Render services have isolated, ephemeral filesystems, so the worker can never see a file the API wrote to its local disk. By default the API stores each upload as a `bytea` blob in the shared PostgreSQL `stored_files` table (`STORAGE_BACKEND=postgres`) and saves the storage key as `Document.source_path`; the worker downloads the bytes from the same database into a per-task temporary file before parsing. No extra service, persistent disk, or billing is required. Cloudflare R2 can be used later as an optional S3-compatible upgrade by setting `STORAGE_BACKEND=r2` plus the `R2_*` credentials — the upload/worker code paths stay identical.
+
+### Free-tier deployment checklist
+
+1. **Provision managed services**
+   - **Neon PostgreSQL** with the `pgvector` extension (the `vector` extension must be enabled). This same database also stores uploaded file bytes in the `stored_files` table, so **no object-storage or billing setup is needed**.
+   - **Upstash Redis** for the Celery broker/result backend and OAuth state.
+
+2. **Create a production Google OAuth client** (Web Application) in Google Cloud and add this authorized redirect URI:
+   ```
+   https://<your-api>.onrender.com/auth/google/callback
+   ```
+
+3. **Set secrets in the Render dashboard (never in Git).** On `rag-api` and `rag-worker` set `DATABASE_URL`, `REDIS_URL` (and `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND`), `HF_TOKEN`, `GROQ_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI`. `STORAGE_BACKEND` defaults to `postgres` in `render.yaml`, so no R2 credentials are needed. On `rag-api` also set `STREAMLIT_FRONTEND_URL` (the Streamlit URL) and `CORS_ORIGINS` (that same URL). On `rag-streamlit` set `API_BASE` to your deployed FastAPI URL, e.g. `https://<your-api>.onrender.com`.
+
+4. **Push the project, deploy the Blueprint**, then test `/health` on the API, upload a document through the Streamlit UI, and confirm the job reaches `completed` (this proves the worker fetched the file bytes from the shared database).
+
+The app refuses to start in `production` with placeholder provider secrets, a weak JWT secret, incomplete Google OAuth credentials, a non-HTTPS Google redirect URI, or R2 selected (`STORAGE_BACKEND=r2`) without complete R2 credentials.
+
+Use `/health` for the host liveness probe and `/ready` when checking that PostgreSQL and Redis are reachable. Do not use `/ready` as a high-frequency public endpoint because it performs real dependency checks.
 
 ## Current implementation status
 
-Implemented: foundation, async ingestion, structured PDF/table parsing, core RAG Q&A, LangGraph corrective retrieval, hybrid search/reranking, table analytics, authentication, and deployment scaffolding.
+Implemented: foundation, async ingestion, structured PDF/table parsing, retry-safe Celery ingestion, object-storage uploads, core RAG Q&A, LangGraph corrective retrieval, hybrid search/reranking, table analytics, authentication, and deployment scaffolding.
 
 Planned next: streamed responses, richer metadata filters, broader table operations, evaluation data/metrics, and a deployed public demo.
 
@@ -163,5 +186,7 @@ Planned next: streamed responses, richer metadata filters, broader table operati
 - `.env`, virtual environments, upload data, and Python caches are excluded by `.gitignore`.
 - Never place OAuth client secrets, database URLs, Redis credentials, tokens, or production JWT secrets in Git.
 - Google OAuth state is stored in Redis with a 10-minute expiry and consumed after use.
+- Ingestion tasks use late acknowledgements, bounded exponential-backoff retries for transient failures, and idempotent rebuilding of derived pages/chunks after a partial attempt.
+- Uploaded documents live in the shared PostgreSQL `stored_files` table (or R2/object storage when configured), never on the isolated API service's disk, so the separate worker can always fetch them.
 
 

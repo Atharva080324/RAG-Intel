@@ -96,14 +96,14 @@ async def google_callback(
 ):
     if error:
         return RedirectResponse(
-            f"http://127.0.0.1:8501/?oauth_error={quote(error)}",
+            f"{settings.redirect_base_url}/?oauth_error={quote(error)}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
     _google_configured()
     if not code or not state:
         return RedirectResponse(
-            "http://127.0.0.1:8501/?oauth_error=invalid_request",
+            f"{settings.redirect_base_url}/?oauth_error=invalid_request",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -111,7 +111,7 @@ async def google_callback(
     cached_state = await get_cache(state_key)
     if not cached_state:
         return RedirectResponse(
-            "http://127.0.0.1:8501/?oauth_error=invalid_state",
+            f"{settings.redirect_base_url}/?oauth_error=invalid_state",
             status_code=status.HTTP_303_SEE_OTHER,
         )
     await delete_cache(state_key)
@@ -140,7 +140,7 @@ async def google_callback(
             profile = userinfo_response.json()
     except Exception:
         return RedirectResponse(
-            "http://127.0.0.1:8501/?oauth_error=oauth_exchange_failed",
+            f"{settings.redirect_base_url}/?oauth_error=oauth_exchange_failed",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -148,7 +148,7 @@ async def google_callback(
     email = profile.get("email", "").strip().lower()
     if not google_subject or not email or profile.get("email_verified") is not True:
         return RedirectResponse(
-            "http://127.0.0.1:8501/?oauth_error=email_not_verified",
+            f"{settings.redirect_base_url}/?oauth_error=email_not_verified",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -163,10 +163,10 @@ async def google_callback(
             await db.refresh(user)
     if not user.is_active:
         return RedirectResponse(
-            "http://127.0.0.1:8501/?oauth_error=inactive_user",
+            f"{settings.redirect_base_url}/?oauth_error=inactive_user",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
     access_token = await create_access_token(data={"sub": user.email})
-    redirect_target = f"http://127.0.0.1:8501/?token={quote(access_token)}"
+    redirect_target = f"{settings.redirect_base_url}/?token={quote(access_token)}"
     return RedirectResponse(redirect_target, status_code=status.HTTP_303_SEE_OTHER)

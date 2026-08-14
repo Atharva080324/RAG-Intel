@@ -16,6 +16,9 @@ class Job(Base):
     progress = Column(Integer, default=0, nullable=False)
     task_id = Column(String(255), unique=True, nullable=True, index=True)
     error_message = Column(String(1000), nullable=True)
+    attempt_count = Column(Integer, default=0, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

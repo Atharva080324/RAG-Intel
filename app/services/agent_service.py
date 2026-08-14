@@ -2,13 +2,14 @@
 import re
 from typing import Literal, TypedDict
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.chunk import Chunk
 from app.models.page import Page
-from app.services.retrieval_service import build_rag_prompt, retrieve_document_chunks
+from app.services.retrieval_service import build_rag_prompt, retrieve_document_chunks_with_diagnostics
 
 _TABLE_TERMS = {"table", "row", "column", "cell", "total", "amount", "price", "revenue", "balance", "percentage"}
 
@@ -22,6 +23,7 @@ class AgentState(TypedDict, total=False):
     attempts: int
     chunks: list[tuple[Chunk, Page]]
     relevance_score: float
+    retrieval_diagnostics: dict[str, int]
     prompt: str
     citations: list[dict[str, object]] 
 
@@ -35,16 +37,16 @@ async def route_query(state: AgentState) -> dict:
     return {"intent": "table" if terms & _TABLE_TERMS else "text", "retrieval_query": state["question"], "attempts": 0}
 
 
-async def retrieve(state: AgentState, config: dict) -> dict:
+async def retrieve(state: AgentState, config: RunnableConfig) -> dict:
     db: AsyncSession = config["configurable"]["db"]
-    chunks = await retrieve_document_chunks(
+    retrieval_result = await retrieve_document_chunks_with_diagnostics(
         db,
         document_id=state["document_id"],
         user_id=state["user_id"],
         question=state["retrieval_query"],
         limit=settings.retrieval_top_k,
     )
-    return {"chunks": chunks}
+    return {"chunks": retrieval_result.chunks, "retrieval_diagnostics": retrieval_result.diagnostics()}
 
 
 async def grade_relevance(state: AgentState) -> dict:
@@ -57,7 +59,7 @@ async def grade_relevance(state: AgentState) -> dict:
 
 
 def after_grade(state: AgentState) -> Literal["rewrite", "prepare"]:
-    return "rewrite" if state["relevance_score"] < 0.15 and state["attempts"] < 2 else "prepare"
+    return "rewrite" if state["relevance_score"] < settings.min_grounding_score and state["attempts"] < 2 else "prepare"
 
 
 async def rewrite_query(state: AgentState) -> dict:

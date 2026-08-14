@@ -3,7 +3,8 @@ services:
     name: rag-api
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    preDeployCommand: alembic upgrade head
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -50,6 +51,12 @@ services:
         sync: false
       - key: CELERY_RESULT_BACKEND
         sync: false
+      - key: STREAMLIT_FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: STORAGE_BACKEND
+        value: postgres
 
   - type: worker
     name: rag-worker
@@ -67,6 +74,8 @@ services:
         value: "60"
       - key: ALGORITHM
         value: HS256
+      - key: ENVIRONMENT
+        value: production
       - key: HF_TOKEN
         sync: false
       - key: HF_HOME
@@ -79,6 +88,8 @@ services:
         value: "32"
       - key: RERANKER_MODEL
         value: cross-encoder/ms-marco-MiniLM-L6-v2
+      - key: GROQ_API_KEY
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
@@ -88,4 +99,16 @@ services:
       - key: CELERY_BROKER_URL
         sync: false
       - key: CELERY_RESULT_BACKEND
+        sync: false
+      - key: STORAGE_BACKEND
+        value: postgres
+
+  - type: web
+    name: rag-streamlit
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app/streamlit_app.py --server.port $PORT --server.address 0.0.0.0
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: API_BASE
         sync: false

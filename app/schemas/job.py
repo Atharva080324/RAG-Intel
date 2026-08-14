@@ -11,6 +11,9 @@ class JobRead(BaseModel):
     status: JobState
     progress: int = Field(..., ge=0, le=100)
     error_message: str | None = None
+    attempt_count: int = Field(default=0, ge=0)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

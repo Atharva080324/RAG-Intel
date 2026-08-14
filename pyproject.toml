@@ -4,7 +4,36 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "aiofiles==23.1.0",
+    "alembic==1.13.2",
+    "asyncpg==0.30.0",
+    "boto3>=1.35.0,<2.0.0",
+    "bcrypt==4.1.3",
+    "celery[redis]==5.4.0",
+    "email-validator==2.1.1",
+    "fastapi==0.116.1",
+    "httpx==0.27.2",
+    "huggingface-hub>=0.30.0,<1.0.0",
+    "langgraph>=1.0.0,<2.0.0",
+    "pandas==2.3.2",
+    "pdfplumber==0.11.4",
+    "pgvector==0.3.6",
+    "pillow==10.4.0",
+    "psycopg[binary]==3.3.4",
+    "pydantic==2.11.7",
+    "pydantic-settings==2.10.1",
+    "pymupdf==1.26.4",
+    "pytesseract==0.3.13",
+    "python-dotenv==1.0.0",
+    "python-jose[cryptography]==3.3.0",
+    "python-multipart>=0.0.10",
+    "redis==5.3.1",
+    "sentence-transformers==3.0.1",
+    "sqlalchemy>=2.0.40,<2.1",
+    "streamlit>=1.57",
+    "uvicorn[standard]>=0.30.0",
+]
 
 [project.scripts]
 rag = "rag:main"
@@ -12,3 +41,12 @@ rag = "rag:main"
 [build-system]
 requires = ["uv_build>=0.12.0,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

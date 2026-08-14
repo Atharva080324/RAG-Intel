@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_db
 from app.core.security import get_current_user
 from app.services.document_service import create_document, create_ingestion_job, get_document_by_hash, get_documents_for_user, get_document_by_id
+from app.services.storage import ObjectStorageError, document_key, get_storage
 from app.workers.tasks import process_document
 from app.models.user import User
 from app.schemas.document import DocumentListRead, DocumentRead, DocumentStatusRead
@@ -12,11 +13,9 @@ from app.schemas.job import JobAccepted
 from app.core.config import settings
 import hashlib
 from uuid import uuid4
-import aiofiles
 
 router = APIRouter()
 
-UPLOAD_DIR = Path("uploads")
 ALLOWED_MIME_TYPES = {"application/pdf", "text/plain", "text/markdown"}
 
 
@@ -50,25 +49,28 @@ async def upload_document(
     if existing_doc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Document already uploaded")
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    saved_path = UPLOAD_DIR / f"{uuid4().hex}{Path(filename).suffix.lower()}"
-    async with aiofiles.open(saved_path, "wb") as f:
-        await f.write(content)
+    # Upload to shared object storage (R2 in production, local fallback in dev)
+    # rather than a service-local directory that the separate worker cannot see.
+    key = document_key(current_user.id, filename, uuid4().hex)
+    try:
+        await get_storage().upload(key, content)
+    except ObjectStorageError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Unable to store uploaded document") from exc
 
     task_id = uuid4().hex
     try:
-        document = await create_document(db, current_user.id, filename, content_hash, str(saved_path))
+        document = await create_document(db, current_user.id, filename, content_hash, key)
         document.status = "queued"
         job = await create_ingestion_job(db, document.id, current_user.id, task_id)
         await db.commit()
         await db.refresh(job)
     except IntegrityError:
         await db.rollback()
-        saved_path.unlink(missing_ok=True)
+        await get_storage().delete(key)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Document already uploaded")
     except Exception:
         await db.rollback()
-        saved_path.unlink(missing_ok=True)
+        await get_storage().delete(key)
         raise
 
     try:
