@@ -18,6 +18,13 @@ celery_app = Celery(
 if platform.system() == "Windows":
     celery_app.conf.worker_pool = "solo"
     celery_app.conf.worker_prefetch_multiplier = 1
+
+# Crash-loop guard for low-memory hosts (Railway free tier, HF Spaces, etc.).
+# The ML stack (sentence-transformers + torch) uses ~1-2 GB RAM per process;
+# Celery's default prefork concurrency (often 48 on multi-core hosts) spawns
+# that many copies and instantly OOMs the container.  ``worker_concurrency=1``
+# keeps ingestion reliable without exhausting memory.
+celery_app.conf.worker_concurrency = 1
 celery_app.conf.task_default_queue = "celery"
 celery_app.conf.task_routes = {
     "app.workers.tasks.*": {"queue": "celery"}
