@@ -1,0 +1,14 @@
+# Prevent secrets and local artifacts from entering the image build context.
+.git
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+uploads/
+runtime-logs/
+tmp_check.py
+evaluation/results.json

@@ -1,3 +1,5 @@
+import platform
+
 from celery import Celery
 from app.core.config import settings
 
@@ -7,6 +9,15 @@ celery_app = Celery(
     backend=settings.redis_url,
     include=["app.workers.tasks"],
 )
+
+# Celery's default ``prefork`` pool relies on POSIX shared-memory primitives
+# (billiard / multiprocessing semaphores) that fail with
+# ``PermissionError: [WinError 5] Access is denied`` on Windows.  The
+# ``solo`` pool runs tasks in the main process and avoids the issue entirely.
+# On Linux (Railway, Docker) the default ``prefork`` pool is left untouched.
+if platform.system() == "Windows":
+    celery_app.conf.worker_pool = "solo"
+    celery_app.conf.worker_prefetch_multiplier = 1
 celery_app.conf.task_default_queue = "celery"
 celery_app.conf.task_routes = {
     "app.workers.tasks.*": {"queue": "celery"}

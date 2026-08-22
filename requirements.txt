@@ -1,15 +1,15 @@
-fastapi==0.116.1
-uvicorn[standard]==0.24.0
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
 sqlalchemy>=2.0.40,<2.1
 asyncpg==0.30.0
-pydantic==2.11.7
-pydantic-settings==2.10.1
+pydantic==2.13.4
+pydantic-settings==2.14.2
 python-jose[cryptography]==3.3.0
 bcrypt==4.1.3
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 redis==5.3.1
 celery[redis]==5.4.0
-python-multipart==0.0.6
+python-multipart==0.0.32
 aiofiles==23.1.0
 email-validator==2.1.1
 pgvector==0.3.6
@@ -25,3 +25,7 @@ huggingface-hub>=0.30.0,<1.0.0
 httpx==0.27.2
 langgraph>=1.0.0,<2.0.0
 boto3>=1.35.0,<2.0.0
+# streamlit and requests are required for app/streamlit_app.py (UI frontend).
+# Without these the Streamlit service crashes on startup in Docker/Railway.
+streamlit>=1.57
+requests>=2.32.0
