@@ -11,7 +11,7 @@ client = TestClient(app)
 def test_google_login_redirects_to_google_with_state(monkeypatch):
     monkeypatch.setattr(settings, "google_client_id", "test-client-id", raising=False)
     monkeypatch.setattr(settings, "google_client_secret", "test-client-secret", raising=False)
-    monkeypatch.setattr(settings, "google_redirect_uri", "http://127.0.0.1:8000/auth/google/callback", raising=False)
+    monkeypatch.setattr(settings, "google_redirect_uri", "https://web-production-1e529.up.railway.app/auth/google/callback", raising=False)
 
     async def fake_set_cache(*args, **kwargs):
         return None

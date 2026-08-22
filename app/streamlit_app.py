@@ -6,7 +6,7 @@ from collections.abc import Iterator
 import requests
 import streamlit as st
 
-API_BASE = os.getenv("API_BASE", "http://127.0.0.1:8002")
+API_BASE = os.getenv("API_BASE", "https://web-production-1e529.up.railway.app")
 REQUEST_TIMEOUT = 120
 SUGGESTIONS = [
     "Summarize the key points in this document.",

@@ -19,11 +19,11 @@ class Settings(BaseSettings):
     groq_model: str = "llama-3.1-8b-instant"
     google_client_id: str | None = None
     google_client_secret: str | None = None
-    google_redirect_uri: str = "http://127.0.0.1:8000/auth/google/callback"
+    google_redirect_uri: str = "https://web-production-1e529.up.railway.app/auth/google/callback"
     # Public base URL of the Streamlit frontend; used for OAuth redirect targets.
-    streamlit_frontend_url: str = "http://127.0.0.1:8501"
+    streamlit_frontend_url: str = "https://rag-document-intelligence-co2yyg8j78s6zgaemeyunm.streamlit.app"
     # Comma-separated list of allowed CORS origins, e.g. "https://app.onrender.com".
-    cors_origins: str = ""
+    cors_origins: str = "https://rag-document-intelligence-co2yyg8j78s6zgaemeyunm.streamlit.app"
     # Cloudflare R2 object storage for uploaded documents (optional; the default
     # "auto"/"postgres" backend stores files as bytea blobs in PostgreSQL).
     r2_account_id: str | None = None
