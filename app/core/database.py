@@ -31,7 +31,18 @@ def _build_engine_url() -> tuple[str, dict]:
 
 _engine_url, _connect_args = _build_engine_url()
 engine: AsyncEngine = create_async_engine(
-    _engine_url, future=True, echo=False, connect_args=_connect_args
+    _engine_url,
+    future=True,
+    echo=False,
+    connect_args=_connect_args,
+    # Verify each pooled connection is alive before reuse. Neon (and other
+    # managed Postgres) close idle connections after ~5 min; without this,
+    # a request can receive a pooled-but-closed asyncpg connection and fail
+    # with ``InterfaceError: connection is closed``.
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=300,
 )
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
