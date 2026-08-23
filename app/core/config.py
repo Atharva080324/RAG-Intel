@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     retrieval_top_k: int = Field(8, ge=1, le=20)
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L6-v2"
     reranker_candidate_limit: int = Field(32, ge=4, le=100)
+    # Kill switch for memory-constrained hosts: when false, retrieval skips the
+    # local CrossEncoder entirely (torch is never imported) and keeps the
+    # hybrid semantic+lexical fusion ordering.
+    reranking_enabled: bool = True
     min_grounding_score: float = Field(0.15, ge=0.0, le=1.0)
 
     @property

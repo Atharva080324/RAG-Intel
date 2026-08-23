@@ -67,6 +67,10 @@ async def retrieve_document_chunks_with_diagnostics(
     candidates = [item[1] for item in sorted(fused.values(), key=lambda item: item[0], reverse=True)[:candidate_limit]]
     if not candidates:
         reranked = []
+    elif not settings.reranking_enabled:
+        # Kill switch: keep the RRF fusion order without loading the local
+        # CrossEncoder/torch stack.
+        reranked = candidates[:limit]
     else:
         reranked = await asyncio.to_thread(rerank, question, candidates, limit)
     return RetrievalResult(
