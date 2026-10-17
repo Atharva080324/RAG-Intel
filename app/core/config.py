@@ -41,6 +41,29 @@ class Settings(BaseSettings):
     reranking_enabled: bool = True
     min_grounding_score: float = Field(0.15, ge=0.0, le=1.0)
 
+    # Demo mode: when true, POST /auth/demo returns a JWT for a shared demo user.
+    demo_mode: bool = False
+    # Email address used for the shared demo account (created/reused at seed time).
+    demo_user_email: str = "demo@rag-demo.internal"
+    # Demo user's password (only used when creating the account, not for JWT login).
+    demo_user_password: str = "SecurePassphrase987!@"
+
+    # Per-user daily caps on uploads and questions, enforced via Redis.
+    # Set to 0 to disable the respective cap.
+    daily_upload_limit: int = Field(20, ge=0)
+    daily_question_limit: int = Field(100, ge=0)
+
+    # Database connection pool tuning
+    db_pool_size: int = Field(5, ge=1, le=50)
+    db_max_overflow: int = Field(5, ge=0, le=50)
+    db_pool_recycle: int = Field(300, ge=30)
+
+    # Public base URL of the React frontend (used for OAuth redirects).
+
+    # Falls back to the Streamlit URL when not set so existing deployments
+    # are unaffected.
+    frontend_url: str = ""
+
     @property
     def r2_configured(self) -> bool:
         """Whether R2 object storage is fully configured."""
@@ -53,13 +76,28 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        """Parse the comma-separated CORS origin string into a list."""
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        """Parse the comma-separated CORS origin string into a list.
+
+        Always includes http://localhost:5173 so the Vite dev server works
+        without local .env changes.
+        """
+        origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        # Ensure Vite dev origin is always allowed (harmless in production).
+        dev_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+        for dev in dev_origins:
+            if dev not in origins:
+                origins.append(dev)
+        return origins
 
     @property
     def redirect_base_url(self) -> str:
-        """Trim any trailing slash from the Streamlit frontend base URL."""
-        return self.streamlit_frontend_url.rstrip("/")
+        """Base URL to redirect browsers to after OAuth.
+
+        Prefers FRONTEND_URL (the React app) when set; falls back to the
+        legacy Streamlit URL so existing deployments are not broken.
+        """
+        preferred = (self.frontend_url or self.streamlit_frontend_url).rstrip("/")
+        return preferred
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

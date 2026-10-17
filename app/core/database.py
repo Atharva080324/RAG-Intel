@@ -40,9 +40,9 @@ engine: AsyncEngine = create_async_engine(
     # a request can receive a pooled-but-closed asyncpg connection and fail
     # with ``InterfaceError: connection is closed``.
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-    pool_recycle=300,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_recycle=settings.db_pool_recycle,
 )
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 

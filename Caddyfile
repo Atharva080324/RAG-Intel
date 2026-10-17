@@ -1,0 +1,59 @@
+# Caddyfile — production TLS reverse-proxy for RAG Document Intelligence
+# ──────────────────────────────────────────────────────────────────────────────
+# Replace "api.yourdomain.com" with your actual domain, or use the environment
+# variable substitution below (requires Caddy >= 2.6 with the XDG env module).
+#
+# The API_DOMAIN env var is injected by docker-compose.prod.yml.
+# ──────────────────────────────────────────────────────────────────────────────
+
+{env.API_DOMAIN} {
+    # Automatic HTTPS via Let's Encrypt (Caddy handles cert issuance/renewal).
+
+    # Reverse-proxy all traffic to the API container.
+    reverse_proxy api:8000 {
+        # SSE / streaming: flush every byte immediately so the browser receives
+        # tokens from /questions/stream without buffering.
+        # -1 means "flush immediately" in Caddy 2.
+        flush_interval -1
+
+        # Transport tuning: fast dial timeout and generous response header timeout for LLM generation
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 60s
+        }
+
+        # Pass the real client IP through (used by the IP-based rate limiter).
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Security headers (supplements the SecurityHeadersMiddleware already in FastAPI).
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        # Strip Server header
+        -Server
+    }
+
+    # Compress responses for non-streaming endpoints (zstd is fast & lightweight on ARM).
+    encode {
+        zstd gzip
+        # Do NOT compress text/event-stream — that would add buffering.
+        except_path /questions/stream
+    }
+
+    # Health and readiness endpoints: accept without auth header for uptime monitors.
+    @health path /health /ready
+    handle @health {
+        reverse_proxy api:8000
+    }
+
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+}

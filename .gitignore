@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 __pycache__/
 *.py[cod]
 .venv/
@@ -12,3 +13,16 @@ uploads/
 tmp_check.py
 runtime-logs/
 evaluation/results.json
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+
+# Caddy
+caddy_data/
+caddy_config/
+
+# Build artifacts
+*.tsbuildinfo

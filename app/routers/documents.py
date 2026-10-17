@@ -1,16 +1,24 @@
 from pathlib import Path
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.config import settings
 from app.core.dependencies import get_db
 from app.core.security import get_current_user
-from app.services.document_service import create_document, create_ingestion_job, get_document_by_hash, get_documents_for_user, get_document_by_id
+from app.services.document_service import (
+    create_document,
+    create_ingestion_job,
+    get_document_by_hash,
+    get_document_by_id,
+    get_documents_for_user,
+)
+from app.services.rate_limit_service import TooManyRequestsError, check_daily_cap
 from app.services.storage import ObjectStorageError, document_key, get_storage
 from app.workers.tasks import process_document
 from app.models.user import User
 from app.schemas.document import DocumentListRead, DocumentRead, DocumentStatusRead
 from app.schemas.job import JobAccepted
-from app.core.config import settings
 import hashlib
 from uuid import uuid4
 
@@ -34,6 +42,14 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    try:
+        await check_daily_cap(current_user.id, "upload", settings.daily_upload_limit)
+    except TooManyRequestsError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={"detail": str(exc)},
+            headers={"Retry-After": str(exc.retry_after)},
+        )
     filename = _safe_filename(file.filename)
     if file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Unsupported media type")

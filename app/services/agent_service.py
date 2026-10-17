@@ -11,7 +11,13 @@ from app.models.chunk import Chunk
 from app.models.page import Page
 from app.services.retrieval_service import build_rag_prompt, retrieve_document_chunks_with_diagnostics
 
-_TABLE_TERMS = {"table", "row", "column", "cell", "total", "amount", "price", "revenue", "balance", "percentage"}
+_TABLE_TERMS = {
+    "table", "row", "column", "cell", "total", "amount", "price", "revenue",
+    "balance", "percentage", "sum", "avg", "average", "max", "maximum",
+    "min", "minimum", "quarter", "quarterly", "expense", "expenses",
+    "cost", "costs", "figures", "metric", "metrics", "financial",
+}
+
 
 
 class AgentState(TypedDict, total=False):

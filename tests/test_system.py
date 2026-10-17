@@ -7,10 +7,15 @@ client = TestClient(app)
 
 
 def test_health_check_is_lightweight_and_available():
+    import time
+
+    start = time.perf_counter()
     response = client.get("/health")
+    elapsed = time.perf_counter() - start
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+    assert elapsed < 2.0, f"/health took {elapsed:.3f}s, exceeding 2s limit"
 
 
 def test_readiness_check_reports_healthy_dependencies(monkeypatch):
@@ -38,7 +43,8 @@ def test_readiness_check_reports_healthy_dependencies(monkeypatch):
     response = client.get("/ready")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "status": "ready",
-        "dependencies": {"database": "ok", "redis": "ok"},
-    }
+    data = response.json()
+    assert data["status"] in ("ready", "warming_up")
+    assert data["dependencies"] == {"database": "ok", "redis": "ok"}
+    assert "warmed_up" in data
+

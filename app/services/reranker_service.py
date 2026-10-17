@@ -11,14 +11,24 @@ if TYPE_CHECKING:
 _reranker: "CrossEncoder | None" = None
 
 
-def rerank(question: str, candidates: list[tuple[Chunk, Page]], limit: int) -> list[tuple[Chunk, Page]]:
+def warm_up_reranker() -> bool:
+    """Preload reranker weights in a worker thread without blocking the event loop."""
     global _reranker
+    if not getattr(settings, "reranking_enabled", True):
+        return False
     if _reranker is None:
-        # Lazy-load on first use so importing this module (e.g. at API boot) never
-        # imports sentence_transformers/torch — that alone costs ~400 MB RSS and
-        # OOM-kills 1 GB containers. Weights load only when reranking actually runs.
         from sentence_transformers import CrossEncoder
 
         _reranker = CrossEncoder(settings.reranker_model)
+        return True
+    return False
+
+
+def rerank(question: str, candidates: list[tuple[Chunk, Page]], limit: int) -> list[tuple[Chunk, Page]]:
+    global _reranker
+    if _reranker is None:
+        warm_up_reranker()
+    if _reranker is None:
+        return candidates[:limit]
     scores = _reranker.predict([(question, chunk.content) for chunk, _ in candidates])
     return [candidate for _, candidate in sorted(zip(scores, candidates), key=lambda item: float(item[0]), reverse=True)[:limit]]

@@ -1,192 +1,189 @@
 # RAG Document Intelligence Platform
 
-An asynchronous, document-aware Retrieval-Augmented Generation (RAG) backend for uploading PDFs and text documents, querying them with grounded answers, and performing exact calculations over extracted tables.
+> **Live demo** → _[add your Vercel URL here after deployment]_
+>
+> **API** → _[add your Caddy domain here]_
 
-The project is designed as a production-minded backend rather than a single-document demo. It combines durable ingestion jobs, structured document parsing, hybrid retrieval, corrective workflow orchestration, authentication, and deployment configuration.
+<!-- Screenshot / GIF placeholder — replace with actual recording -->
+> ![Demo screenshot placeholder](docs/demo_placeholder.png)
 
-## Highlights
-
-- Asynchronous FastAPI API with Celery/Redis background ingestion and job polling
-- PDF, TXT, and Markdown upload support with content-hash deduplication; files are stored as bytea blobs in the shared PostgreSQL database so the separate worker can fetch them (Cloudflare R2 optional)
-- PDF text extraction with PyMuPDF, table extraction with pdfplumber, and OCR fallback through Tesseract
-- Page, text, and table chunks persisted in PostgreSQL with pgvector embeddings and full-text search vectors
-- Hybrid retrieval that fuses vector similarity and PostgreSQL lexical search, then reranks candidates with a cross-encoder
-- LangGraph corrective-RAG workflow: route, retrieve, grade grounding, rewrite, and retry (up to two times)
-- Table analytics path for exact `average`, `sum`, `minimum`, and `maximum` calculations over retrieved Markdown tables
-- JWT authentication, password signup/login, and Google OAuth 2.0 authorization-code login
-- Per-user document isolation, rate limiting, security headers, upload validation, Docker Compose, and Render Blueprint configuration
+---
 
 ## Architecture
 
-```text
-Client / Streamlit UI
-        |
-        v
-FastAPI API ── JWT / Google OAuth 2.0
-   |                 |
-   |                 +── Redis (OAuth state, rate limiting)
-   |
-   +── Upload -> shared PostgreSQL storage (bytea) -> job -> Celery worker
-   |                              |
-   |                              +── fetch bytes from DB, parse PDF/text, OCR
-   |                              +── chunk + embed -> PostgreSQL + pgvector
-   |
-   +── Question -> LangGraph corrective workflow
-                        |
-                        +── vector + full-text retrieval -> reranker
-                        +── grounded answer with page citations
-                        +── table analytics when applicable
+```mermaid
+graph TD
+    Browser["Browser\n(React + Vite — Vercel/Netlify)"]
+
+    subgraph Oracle_Cloud_ARM ["Oracle Cloud Always Free ARM VM"]
+        Caddy["Caddy\n(TLS termination\nflush_interval -1)"]
+        API["FastAPI / Uvicorn\n(api service)"]
+        Worker["Celery Worker\n(worker service)"]
+        Redis["Redis 7\n(broker · results · rate-limits)"]
+        DB[("PostgreSQL 16\n+ pgvector\n(db service)")]
+    end
+
+    Browser -->|HTTPS SSE / REST| Caddy
+    Caddy -->|reverse_proxy| API
+    API -->|job queue| Redis
+    API -->|SQLAlchemy async| DB
+    Worker -->|reads from| Redis
+    Worker -->|reads bytes from| DB
+    Worker -->|writes chunks + embeddings| DB
+    API -->|HF Inference API| HF["HuggingFace\n(BGE embeddings)"]
+    API -->|chat completions| Groq["Groq\n(llama-3.1-8b)"]
 ```
 
-## Tech stack
+---
 
-| Area | Tools |
-| --- | --- |
-| API and validation | FastAPI, Pydantic, Uvicorn |
-| Persistence | PostgreSQL, SQLAlchemy async, Alembic, pgvector |
-| Background work | Celery, Redis |
-| Parsing and analytics | PyMuPDF, pdfplumber, Tesseract, pandas |
-| Retrieval and orchestration | Hugging Face Inference embeddings, PostgreSQL FTS, cross-encoder reranking, LangGraph |
-| Authentication | bcrypt, JWT, Google OAuth 2.0 |
-| Operations | Docker Compose, Render, PostgreSQL bytea storage, Streamlit UI |
+## Key Engineering Decisions
 
-## Project structure
+| Decision | Rationale |
+|----------|-----------|
+| **Hybrid retrieval + RRF** | pgvector cosine search misses exact terms; PostgreSQL FTS misses semantics. Reciprocal-rank fusion captures both with zero extra infra. |
+| **Cross-encoder reranking** | BGE embeddings optimise recall. The cross-encoder (`ms-marco-MiniLM-L6-v2`) re-scores the top-32 candidates for precision. Kill-switch (`RERANKING_ENABLED=false`) saves ~400 MB RAM on tight hosts. |
+| **Corrective RAG (LangGraph)** | Grounding score below threshold triggers a focused query rewrite and one retry. Bounded to 2 attempts — no infinite loops. |
+| **Table analytics** | pdfplumber extracts Markdown tables at ingest. At query time, pandas computes exact sum/avg/min/max — no LLM arithmetic. |
+| **Durable ingestion** | Files stored as `bytea` in PostgreSQL so the Celery worker (separate container) can fetch them without a shared filesystem. |
+| **SSE streaming** | `StreamingResponse` + `X-Accel-Buffering: no` ensures Caddy flushes each token immediately. `flush_interval -1` in Caddyfile enforces this end-to-end. |
+| **Oracle Cloud Always Free** | 4 OCPU / 24 GB ARM VM hosts the stack. `scripts/keepalive.sh` performs periodic system audits; PAYG account upgrade permanently prevents idle VM reclamation at $0/mo. |
+| **Demo mode** | `DEMO_MODE=true` exposes `POST /auth/demo` — no credentials needed for recruiter demos. `DEMO_MODE=false` (default) makes the endpoint 404. Daily upload caps and `scripts/cleanup_demo_uploads.py` prevent disk accumulation. |
 
-```text
-app/
-  routers/       # auth, documents, jobs, and question endpoints
-  services/      # parsing, ingestion, retrieval, reranking, storage, analytics, users
-  workers/       # Celery application and document-ingestion task
-  models/        # users, documents, pages, chunks, jobs
-  schemas/       # API request and response contracts
-  middleware/    # rate limiting and security headers
-  streamlit_app.py
-alembic/         # PostgreSQL migrations, including pgvector and Google identity
-tests/           # automated API tests
-```
+---
 
-## Local setup
+## Highlights
 
-### 1. Prerequisites
+- **Async FastAPI** + **Celery/Redis** background ingestion with job polling  
+- **PDF** extraction with PyMuPDF, **table** extraction with pdfplumber, **OCR** fallback via Tesseract  
+- **Hybrid retrieval** — pgvector + PostgreSQL FTS fused with Reciprocal Rank Fusion  
+- **Corrective RAG** — LangGraph workflow: route → retrieve → grade → rewrite → retry (≤ 2×)  
+- **Table analytics** — exact sum/avg/min/max over extracted Markdown tables via pandas  
+- **Streaming answers** — SSE token stream, rendered live as Markdown with clickable `[S1]` citations  
+- **Retrieval Inspector** — live view of vector hits, lexical hits, fusion, rerank scores, rewrites  
+- **JWT auth** + **Google OAuth 2.0** + shared demo account  
+- **Per-user daily caps** on uploads and questions (Redis-backed, configurable)  
+- **React + TypeScript** frontend — Vite, TanStack Query, React Router, retro design system  
 
-- Python 3.12+
-- PostgreSQL with the `vector` extension
-- Redis
-- Tesseract (optional, enables OCR fallback for scanned PDFs)
-- A Hugging Face access token for hosted embeddings
-- A Groq API key for answer generation
+---
 
-### 2. Configure environment
+## Run Locally
 
-Copy `.env.example` to `.env` and fill in the required values. Do not commit `.env`.
+### Backend
 
-```env
-DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:5432/DB_NAME
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=replace-with-a-long-random-secret
-HF_TOKEN=your-hugging-face-token
-GROQ_API_KEY=your-groq-api-key
-```
+```bash
+# Prerequisites: Python 3.12+, PostgreSQL + pgvector, Redis, (optional) Tesseract
 
-For Google login, create a Web Application OAuth client in Google Cloud and add this authorized redirect URI:
+cp .env.example .env
+# Fill in DATABASE_URL, REDIS_URL, SECRET_KEY, HF_TOKEN, GROQ_API_KEY
 
-```env
-GOOGLE_CLIENT_ID=your-google-web-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-GOOGLE_REDIRECT_URI=http://127.0.0.1:8000/auth/google/callback
-```
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # Linux/macOS
 
-### 3. Install and run
-
-```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-py -m pip install -r requirements.txt
+pip install -r requirements.txt
 alembic upgrade head
-py -m uvicorn app.main:app --reload
+uvicorn app.main:app --reload
 ```
 
-Run the worker separately (Windows requires the `solo` pool):
+Run the Celery worker (in a separate terminal):
 
-```powershell
-.\.venv\Scripts\Activate.ps1
+```bash
 celery -A app.workers.celery_app worker --pool=solo --loglevel=info
 ```
 
-Optional local tester UI:
+### Frontend
 
-```powershell
-streamlit run app/streamlit_app.py
+```bash
+cd frontend
+cp .env.example .env.local      # VITE_API_BASE=http://127.0.0.1:8000
+npm install
+npm run dev                     # → http://localhost:5173
 ```
 
-The interactive API docs are available at `http://127.0.0.1:8000/docs`.
+### With Docker Compose (full local stack)
 
-## API overview
+```bash
+docker compose up -d
+```
 
-| Endpoint | Purpose |
-| --- | --- |
-| `POST /auth/signup` | Create an email/password account |
-| `POST /auth/token` | Obtain a JWT using OAuth2 password form data |
-| `GET /auth/google/login` | Begin Google OAuth sign-in |
-| `GET /auth/google/callback` | Complete Google OAuth sign-in |
-| `POST /documents/upload` | Upload a PDF, TXT, or Markdown document; returns an ingestion job |
-| `GET /documents/` | List the authenticated user's documents |
-| `GET /jobs/{job_id}` | Poll ingestion progress and failure details |
-| `POST /questions/analyze` | Retrieve evidence, generate an answer, and return citations |
-| `POST /questions/stream` | Stream a grounded answer and citations as server-sent events |
-| `GET /health` | Liveness check |
-| `GET /ready` | Dependency readiness check for PostgreSQL and Redis |
+---
 
-All document and question routes require `Authorization: Bearer <token>`.
+## API Reference
 
-## Retrieval workflow
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/health` | GET | — | Liveness probe |
+| `/ready` | GET | — | DB + Redis readiness |
+| `/auth/signup` | POST | — | Email/password registration |
+| `/auth/token` | POST | — | JWT via OAuth2 password grant |
+| `/auth/google/login` | GET | — | Begin Google OAuth |
+| `/auth/google/callback` | GET | — | Complete Google OAuth |
+| `/auth/demo` | POST | — | Demo JWT (`DEMO_MODE=true` only) |
+| `/documents/upload` | POST | ✓ | Upload PDF/TXT/MD |
+| `/documents/` | GET | ✓ | List documents |
+| `/jobs/{id}` | GET | ✓ | Poll ingestion job |
+| `/questions/analyze` | POST | ✓ | Table analytics + retrieval trace |
+| `/questions/stream` | POST | ✓ | Streaming grounded answer (SSE) |
 
-1. Ingestion extracts page text and tables, then stores text and Markdown-table chunks with page metadata.
-2. A query is classified as text- or table-oriented.
-3. Semantic pgvector search and PostgreSQL full-text search each produce candidate chunks.
-4. Reciprocal-rank fusion merges the candidates; a cross-encoder reranks the final shortlist.
-5. The LangGraph workflow grades lexical grounding. Weak results trigger a more focused query and a bounded retry.
-6. The answer prompt requires source markers such as `[S1]`; numeric table requests can be calculated directly with pandas.
+---
+
+## Project Structure
+
+```
+app/
+  routers/       auth, documents, jobs, questions
+  services/      retrieval, reranking, ingestion, analytics, storage, users
+  workers/       Celery app + document ingestion task
+  models/        User, Document, Page, Chunk, Job, StoredFile
+  schemas/       API contracts (incl. RetrievalTrace, AnalyzeResponse)
+  middleware/    IP rate-limit, security headers
+  core/          config, database, security, dependencies
+
+src/rag/         (future: shared retrieval primitives)
+alembic/         PostgreSQL migrations (pgvector, Google identity)
+scripts/         seed_demo.py, keepalive.sh, cleanup_demo_uploads.py, create_sample_pdfs.py
+samples/         Sample PDFs (text architecture guide + financial table)
+tests/           pytest: system, auth, phase1 (demo, rate-caps, trace, CORS)
+
+frontend/
+  src/
+    api/         Typed API client (client.ts)
+    hooks/       useSSE, useHealth
+    pages/       LandingPage, DocumentsPage, ChatPage
+    components/
+      ui/        AppShell, ServerWakeUp
+      chat/      CitationPanel
+      inspector/ RetrievalInspector
+    test/        client, useSSE, CitationPanel unit tests
+  e2e/           Playwright end-to-end smoke test
+  vite.config.ts
+  tailwind / index.css  (retro cream/yellow/black theme)
+
+docs/
+  DEPLOY_ORACLE.md    Oracle Cloud ARM VM setup
+  DEPLOY_FRONTEND.md  Vercel / Netlify deployment
+
+docker-compose.yml          Local dev (api + worker + redis + db)
+docker-compose.prod.yml     Production (+ caddy + migrate one-shot)
+Dockerfile                  Multi-stage, linux/arm64, non-root
+Caddyfile                   HTTPS + SSE-safe flush_interval -1
+.env.example
+.env.production.example
+```
+
+---
 
 ## Deployment
 
-`docker-compose.yml` starts the API, Celery worker, PostgreSQL/pgvector, and Redis for local development. In local/docker-compose the API and worker share an `uploads/` volume, so uploads are written to the local `LocalStorage` fallback (`app/services/storage.py`).
+See [`docs/DEPLOY_ORACLE.md`](docs/DEPLOY_ORACLE.md) for the full Oracle Cloud step-by-step.  
+See [`docs/DEPLOY_FRONTEND.md`](docs/DEPLOY_FRONTEND.md) for Vercel / Netlify.
 
-`render.yaml` is a Render Blueprint that deploys three services: `rag-api` (FastAPI), `rag-worker` (Celery), and `rag-streamlit` (the web UI). Migrations run through the API service's `preDeployCommand: alembic upgrade head` rather than in the start command.
+---
 
-**Shared storage (default: PostgreSQL bytea, zero billing).** Render services have isolated, ephemeral filesystems, so the worker can never see a file the API wrote to its local disk. By default the API stores each upload as a `bytea` blob in the shared PostgreSQL `stored_files` table (`STORAGE_BACKEND=postgres`) and saves the storage key as `Document.source_path`; the worker downloads the bytes from the same database into a per-task temporary file before parsing. No extra service, persistent disk, or billing is required. Cloudflare R2 can be used later as an optional S3-compatible upgrade by setting `STORAGE_BACKEND=r2` plus the `R2_*` credentials — the upload/worker code paths stay identical.
+## Security
 
-### Free-tier deployment checklist
-
-1. **Provision managed services**
-   - **Neon PostgreSQL** with the `pgvector` extension (the `vector` extension must be enabled). This same database also stores uploaded file bytes in the `stored_files` table, so **no object-storage or billing setup is needed**.
-   - **Upstash Redis** for the Celery broker/result backend and OAuth state.
-
-2. **Create a production Google OAuth client** (Web Application) in Google Cloud and add this authorized redirect URI:
-   ```
-   https://<your-api>.onrender.com/auth/google/callback
-   ```
-
-3. **Set secrets in the Render dashboard (never in Git).** On `rag-api` and `rag-worker` set `DATABASE_URL`, `REDIS_URL` (and `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND`), `HF_TOKEN`, `GROQ_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI`. `STORAGE_BACKEND` defaults to `postgres` in `render.yaml`, so no R2 credentials are needed. On `rag-api` also set `STREAMLIT_FRONTEND_URL` (the Streamlit URL) and `CORS_ORIGINS` (that same URL). On `rag-streamlit` set `API_BASE` to your deployed FastAPI URL, e.g. `https://<your-api>.onrender.com`.
-
-4. **Push the project, deploy the Blueprint**, then test `/health` on the API, upload a document through the Streamlit UI, and confirm the job reaches `completed` (this proves the worker fetched the file bytes from the shared database).
-
-The app refuses to start in `production` with placeholder provider secrets, a weak JWT secret, incomplete Google OAuth credentials, a non-HTTPS Google redirect URI, or R2 selected (`STORAGE_BACKEND=r2`) without complete R2 credentials.
-
-Use `/health` for the host liveness probe and `/ready` when checking that PostgreSQL and Redis are reachable. Do not use `/ready` as a high-frequency public endpoint because it performs real dependency checks.
-
-## Current implementation status
-
-Implemented: foundation, async ingestion, structured PDF/table parsing, retry-safe Celery ingestion, object-storage uploads, core RAG Q&A, LangGraph corrective retrieval, hybrid search/reranking, table analytics, authentication, and deployment scaffolding.
-
-Planned next: streamed responses, richer metadata filters, broader table operations, evaluation data/metrics, and a deployed public demo.
-
-## Security notes
-
-- `.env`, virtual environments, upload data, and Python caches are excluded by `.gitignore`.
-- Never place OAuth client secrets, database URLs, Redis credentials, tokens, or production JWT secrets in Git.
-- Google OAuth state is stored in Redis with a 10-minute expiry and consumed after use.
-- Ingestion tasks use late acknowledgements, bounded exponential-backoff retries for transient failures, and idempotent rebuilding of derived pages/chunks after a partial attempt.
-- Uploaded documents live in the shared PostgreSQL `stored_files` table (or R2/object storage when configured), never on the isolated API service's disk, so the separate worker can always fetch them.
-
-
+- Secrets never committed — only `.env.example` and `.env.production.example` are in Git  
+- Production refuses to start with placeholder `SECRET_KEY`, missing API keys, or incomplete OAuth config  
+- Google OAuth state stored in Redis with 10-minute expiry, consumed exactly once  
+- Per-user daily upload and question caps via Redis counters with 24-hour TTL  
+- Non-root container user, no host ports exposed except through Caddy  

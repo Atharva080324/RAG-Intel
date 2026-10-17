@@ -1,26 +1,36 @@
+import asyncio
 from datetime import timedelta
 from secrets import token_urlsafe
+import logging
+import uuid
+
 from urllib.parse import urlencode, quote
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from app.core.config import settings
 from app.core.dependencies import get_db
-from app.core.security import verify_password, create_access_token
+from app.core.security import verify_password, create_access_token, get_password_hash
+from app.models.user import User
+from app.models.document import Document
+from app.models.page import Page
+from app.models.chunk import Chunk
 from app.services.user_service import (
     create_google_user,
     create_user,
     get_user_by_email,
     get_user_by_google_subject,
 )
-from app.services.cache_service import delete_cache, get_cache, set_cache
+from app.services.cache_service import delete_cache, get_cache, set_cache, redis
 from app.schemas.token import Token
 from app.schemas.user import UserCreate, UserRead
 
 router = APIRouter()
+
 
 GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -170,3 +180,120 @@ async def google_callback(
     access_token = await create_access_token(data={"sub": user.email})
     redirect_target = f"{settings.redirect_base_url}/?token={quote(access_token)}"
     return RedirectResponse(redirect_target, status_code=status.HTTP_303_SEE_OTHER)
+
+
+logger = logging.getLogger("app.auth")
+
+
+@router.post(
+    "/demo",
+    response_model=Token,
+    summary="Obtain an isolated demo session JWT (DEMO_MODE only)",
+    description=(
+        "Returns a short-lived JWT for a fresh isolated demo user with pre-seeded documents. "
+        "Only available when **DEMO_MODE=true**."
+    ),
+)
+async def demo_login(request: Request, db: AsyncSession = Depends(get_db)) -> Token:
+    """Issue a fresh per-session demo JWT with pre-seeded documents and per-IP rate limiting."""
+    if not settings.demo_mode:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo mode is not enabled on this deployment",
+        )
+
+    # 1. Per-IP rate limiting (guard against automated abuse)
+    client_ip = (
+        request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or (request.client.host if request.client else "unknown")
+    )
+    ip_key = f"ratelimit:demo_ip:{client_ip}"
+    try:
+        current = await redis.incr(ip_key)
+        if current == 1:
+            await redis.expire(ip_key, 3600)  # 1 hour window
+        if current > 30:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Demo session creation limit reached for this IP address. Please try again later.",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Redis IP rate limit check non-fatal error: %s", exc)
+
+    # 2. Create isolated session demo user
+    session_id = uuid.uuid4().hex[:10]
+    session_email = f"demo_{session_id}@rag-demo.internal"
+    logger.info("Provisioning isolated demo session user %s (client IP: %s)", session_email, client_ip)
+
+    session_user = User(
+        email=session_email,
+        hashed_password=get_password_hash(settings.demo_user_password),
+        is_active=True,
+    )
+    db.add(session_user)
+    await db.flush()
+
+    # 3. Clone seeded sample documents from master demo user (if master user has documents)
+    try:
+        master_email = settings.demo_user_email.strip().lower()
+        master_user = await get_user_by_email(db, master_email)
+        if master_user:
+            res = await db.execute(
+                select(Document).where(Document.user_id == master_user.id, Document.status == "completed")
+            )
+            master_docs = res.scalars().all() if hasattr(res, "scalars") and not asyncio.iscoroutinefunction(res.scalars) else []
+
+            for mdoc in master_docs:
+                new_doc = Document(
+                    user_id=session_user.id,
+                    filename=mdoc.filename,
+                    content_hash=mdoc.content_hash,
+                    status="completed",
+                    source_path=mdoc.source_path,
+                )
+                db.add(new_doc)
+                await db.flush()
+
+                # Copy pages
+                p_res = await db.execute(select(Page).where(Page.document_id == mdoc.id))
+                mpages = p_res.scalars().all() if hasattr(p_res, "scalars") else []
+                page_map = {}
+                for mp in mpages:
+                    np = Page(
+                        document_id=new_doc.id,
+                        page_number=mp.page_number,
+                        page_text=mp.page_text,
+                    )
+                    db.add(np)
+                    await db.flush()
+                    page_map[mp.id] = np.id
+
+                # Copy chunks
+                c_res = await db.execute(select(Chunk).where(Chunk.document_id == mdoc.id))
+                mchunks = c_res.scalars().all() if hasattr(c_res, "scalars") else []
+                for mc in mchunks:
+                    nc = Chunk(
+                        document_id=new_doc.id,
+                        page_id=page_map.get(mc.page_id),
+                        chunk_type=mc.chunk_type,
+                        content=mc.content,
+                        chunk_metadata=mc.chunk_metadata,
+                        embedding=mc.embedding,
+                    )
+                    db.add(nc)
+
+            await db.commit()
+    except Exception as exc:
+        logger.warning("Demo document cloning skipped or failed: %s", exc)
+
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = await create_access_token(data={"sub": session_user.email}, expires_delta=access_token_expires)
+    logger.info("Demo JWT successfully issued for %s", session_email)
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=settings.access_token_expire_minutes * 60,
+    )
+

@@ -69,18 +69,37 @@ def chunk_text(text: str, chunk_size: int = 1200, overlap: int = 150) -> Iterabl
         start = max(end - overlap, start + 1)
 
 
+_local_model = None
+
+
 def embed(texts: list[str], *, is_query: bool = False) -> list[list[float]]:
-    """Hosted BGE embeddings; no embedding model weights are loaded by this service."""
-    global _embedding_client
-    if not settings.hf_token:
-        raise RuntimeError("HF_TOKEN is required for hosted embeddings")
-    if _embedding_client is None:
-        _embedding_client = InferenceClient(provider="hf-inference", api_key=settings.hf_token)
+    """Hosted BGE embeddings with graceful local fallback if HF credits are exhausted."""
+    global _embedding_client, _local_model
     inputs = texts
     if is_query:
         inputs = [f"Represent this sentence for searching relevant passages: {text}" for text in texts]
-    vectors = _embedding_client.feature_extraction(inputs, model=settings.embedding_model, normalize=True)
+
+    # Try hosted Hugging Face Inference API first if token is present
+    if settings.hf_token:
+        try:
+            if _embedding_client is None:
+                _embedding_client = InferenceClient(provider="hf-inference", api_key=settings.hf_token)
+            vectors = _embedding_client.feature_extraction(inputs, model=settings.embedding_model, normalize=True)
+            result = vectors.tolist() if hasattr(vectors, "tolist") else vectors
+            if not any(len(vector) != settings.embedding_dimension for vector in result):
+                return result
+        except Exception:
+            # Fall back to local model if HF API credit limit/error occurs
+            pass
+
+    # Local fallback using sentence-transformers
+    if _local_model is None:
+        from sentence_transformers import SentenceTransformer
+        _local_model = SentenceTransformer(settings.embedding_model)
+
+    vectors = _local_model.encode(inputs, normalize_embeddings=True)
     result = vectors.tolist() if hasattr(vectors, "tolist") else vectors
     if any(len(vector) != settings.embedding_dimension for vector in result):
         raise RuntimeError("Embedding provider returned an unexpected vector dimension")
     return result
+
