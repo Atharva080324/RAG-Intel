@@ -67,6 +67,7 @@ services:
       context: .
       target: runtime
     image: rag-app:latest
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
     restart: unless-stopped
     mem_limit: 2.5g
     env_file: .env.production
@@ -107,7 +108,7 @@ services:
       - app.workers.celery_app
       - worker
       - --loglevel=info
-      - --concurrency=2
+      - --concurrency=1
     restart: unless-stopped
     env_file: .env.production
     environment:
