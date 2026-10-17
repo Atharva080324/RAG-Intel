@@ -6,7 +6,7 @@
 # The API_DOMAIN env var is injected by docker-compose.prod.yml.
 # ──────────────────────────────────────────────────────────────────────────────
 
-{env.API_DOMAIN} {
+{$API_DOMAIN} {
     # Automatic HTTPS via Let's Encrypt (Caddy handles cert issuance/renewal).
 
     # Reverse-proxy all traffic to the API container.
