@@ -30,12 +30,13 @@
 
 ### OS-level firewall (on the VM)
 
+On Oracle Ubuntu Minimal images, `ufw` is often missing or bypassed by Oracle default iptables chains. Use direct iptables rules and persist them:
+
 ```bash
-sudo ufw allow OpenSSH
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw enable
-sudo ufw status
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+sudo apt-get install -y iptables-persistent
+sudo netfilter-persistent save
 ```
 
 ---
@@ -92,26 +93,29 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plu
 
 # Allow your user to run Docker without sudo
 sudo usermod -aG docker ubuntu
-# Apply group change without re-login:
-newgrp docker
+
+# Exit and re-connect via SSH to refresh group permissions cleanly:
+exit
+# Then re-connect:
+# ssh -i your-key.pem ubuntu@<VM_PUBLIC_IP>
 docker --version   # should print Docker 24+
 ```
 
 ---
 
-## 4. DuckDNS Setup (free domain)
+## 4. DuckDNS & Public IP Reservation
+ 
+ > [!IMPORTANT]
+ > **Reserve your Public IP**: Newly created Oracle instance IPs are ephemeral by default. In the Oracle Console, navigate to **Compute → Instances → your instance → Attached VNICs → Primary VNIC → IPv4 Addresses**, edit the address, and convert it to a **Reserved Public IP** (free for 1 attached instance). This ensures stopping/starting the VM never changes your IP.
 
 1. Sign in at [duckdns.org](https://www.duckdns.org).
 2. Create a subdomain, e.g. `rag-intel.duckdns.org`.
-3. Set the IP to your Oracle VM's **public IP**.
-4. Auto-update cron (optional, if your IP changes):
-
-```bash
-# Add to crontab -e
-*/5 * * * * curl -s "https://www.duckdns.org/update?domains=rag-intel&token=YOUR_TOKEN&ip=" > /dev/null
-```
-
-Verify: `nslookup rag-intel.duckdns.org` should return your VM IP.
+3. Set the IP to your Oracle VM's **Reserved Public IP**.
+4. **Verify DNS before launching Caddy**:
+   ```bash
+   nslookup rag-intel.duckdns.org
+   ```
+   Confirm it returns your VM IP. Launching Caddy before DNS propagates will cause Let's Encrypt certificate issuance to fail and potentially trigger rate limits.
 
 ---
 
@@ -119,12 +123,12 @@ Verify: `nslookup rag-intel.duckdns.org` should return your VM IP.
 
 ```bash
 cd ~
-git clone https://github.com/Atharva080324/rag-document-intelligence rag
+git clone https://github.com/Atharva080324/RAG-Intel.git rag
 cd rag
 
 # Copy the production env template
 cp .env.production.example .env.production
-nano .env.production   # fill in EVERY placeholder
+nano .env.production   # fill in required values
 ```
 
 **Mandatory values to fill:**
@@ -174,42 +178,40 @@ docker compose -f docker-compose.prod.yml --env-file .env.production \
 
 ## 8. Seed Demo Data
 
-Add 2–3 sample PDFs to `samples/` (include one with tables):
+The sample PDFs (`quarterly_financial_report.pdf` and `rag_architecture_guide.pdf`) are bundled inside the repository and Docker image.
 
-```bash
-mkdir -p samples
-# Copy your PDFs:
-cp /path/to/annual_report.pdf samples/
-cp /path/to/data_table.pdf samples/
-cp /path/to/technical_overview.txt samples/
-```
-
-Then seed:
+Run the seeding script inside the running API container:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production \
-  exec api sh -c "DEMO_MODE=true API_BASE=http://localhost:8000 python scripts/seed_demo.py"
+  exec -e API_BASE=http://localhost:8000 -e DEMO_MODE=true api python scripts/seed_demo.py
 ```
+
+Watch the Celery worker process and embed the documents:
+```bash
+docker compose -f docker-compose.prod.yml logs -f worker
+```
+Wait until both documents reach `completed`.
 
 ---
 
 ## 9. Verify
 
 ```bash
-# Health check
+# Liveness probe
 curl https://rag-intel.duckdns.org/health
 # → {"status":"ok"}
 
-# Readiness check
+# Readiness & model warm-up check
 curl https://rag-intel.duckdns.org/ready
-# → {"status":"ready","dependencies":{"database":"ok","redis":"ok"}}
+# → {"status":"ready","warmed_up":true,"dependencies":{"database":"available","redis":"available"}}
 
-# Demo JWT
+# Demo JWT generation
 curl -X POST https://rag-intel.duckdns.org/auth/demo
 # → {"access_token":"...","token_type":"bearer","expires_in":3600}
 ```
 
-Open the React frontend and click **Try Demo** — documents seeded above should appear.
+Open your React frontend and click **Try Demo — No Login** — the seeded documents and suggested questions should appear immediately.
 
 ---
 
@@ -253,6 +255,7 @@ The most reliable and permanent solution is upgrading your Oracle Cloud account 
 2. Add a credit card (a temporary authorization hold of ~$100 is placed and immediately reversed).
 3. **No cost is incurred**: Your 4 OCPUs, 24 GB RAM, and 200 GB block volume remain within the permanent Always Free tier ($0.00/month).
 4. **Benefit**: PAYG accounts are completely exempt from idle instance reclamation.
+5. **Budget Alert (Recommended)**: Set a **$1.00 Monthly Budget** in **Billing & Cost Management → Budgets** to receive immediate email notification if any unexpected paid resource is provisioned.
 
 ### Operational Monitoring Cron (scripts/keepalive.sh)
 Rather than burning fake CPU cycles, `scripts/keepalive.sh` performs honest maintenance checks:
@@ -261,9 +264,10 @@ Rather than burning fake CPU cycles, `scripts/keepalive.sh` performs honest main
 - Audits memory utilization and checks for unhealthy Docker containers.
 
 ```bash
+mkdir -p /home/ubuntu/logs
 chmod +x scripts/keepalive.sh
 # Run every 15 minutes via crontab -e:
-*/15 * * * * /home/ubuntu/rag-document-intelligence/scripts/keepalive.sh >> /var/log/rag-keepalive.log 2>&1
+*/15 * * * * /home/ubuntu/rag/scripts/keepalive.sh >> /home/ubuntu/logs/rag-keepalive.log 2>&1
 ```
 
 ### Automated Demo Uploads Purge (scripts/cleanup_demo_uploads.py)
@@ -271,7 +275,7 @@ To prevent disk accumulation on the VM from demo uploads, run the automated demo
 
 ```bash
 # Add to crontab -e:
-0 3 * * * cd /home/ubuntu/rag-document-intelligence && docker compose -f docker-compose.prod.yml exec -T api python scripts/cleanup_demo_uploads.py >> /var/log/rag-cleanup.log 2>&1
+0 3 * * * cd /home/ubuntu/rag && docker compose -f docker-compose.prod.yml exec -T api python scripts/cleanup_demo_uploads.py >> /home/ubuntu/logs/rag-cleanup.log 2>&1
 ```
 
 ---

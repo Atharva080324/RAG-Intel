@@ -11,8 +11,8 @@ test.describe('RAG Document Intelligence End-to-End Smoke Test', () => {
     await page.goto('/')
     await expect(page).toHaveTitle(/RAG Document Intelligence/i)
 
-    // 2. Click "Try Live Demo" to perform 1-click recruiter authentication
-    const demoButton = page.locator('button:has-text("Try Live Demo"), a:has-text("Try Live Demo")').first()
+    // 2. Click "Try Demo" to perform 1-click recruiter authentication
+    const demoButton = page.locator('#btn-try-demo, button:has-text("Try Demo"), button:has-text("Try Live Demo")').first()
     await expect(demoButton).toBeVisible()
     await demoButton.click()
 

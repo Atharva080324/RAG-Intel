@@ -130,7 +130,10 @@ class Settings(BaseSettings):
                 "or switch STORAGE_BACKEND back to auto/postgres (PostgreSQL bytea blobs, no billing)."
             )
 
-        google_values = (self.google_client_id, self.google_client_secret)
+        # Treat placeholder (<...>) or empty values as unconfigured so Google login is fully optional
+        google_id = self.google_client_id.strip() if self.google_client_id and not self.google_client_id.startswith("<") else ""
+        google_secret = self.google_client_secret.strip() if self.google_client_secret and not self.google_client_secret.startswith("<") else ""
+        google_values = (google_id, google_secret)
         if any(google_values) and not all(google_values):
             raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured together")
         if all(google_values) and not self.google_redirect_uri.startswith("https://"):

@@ -58,6 +58,7 @@ COPY alembic/ ./alembic/
 COPY app/ ./app/
 COPY src/ ./src/
 COPY scripts/ ./scripts/
+COPY samples/ ./samples/
 
 # Hugging Face cache inside the container (avoids writing to /root)
 ENV HF_HOME=/app/.cache/huggingface

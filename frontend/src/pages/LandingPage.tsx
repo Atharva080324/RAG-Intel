@@ -151,7 +151,7 @@ export function LandingPage({ reachable = true, warmedUp = true }: LandingPagePr
               {demoLoading ? 'Waking up…' : 'Try Demo — No Login'}
             </button>
             <a
-              href="https://github.com/Atharva080324/rag-document-intelligence"
+              href="https://github.com/Atharva080324/RAG-Intel"
               target="_blank"
               rel="noreferrer"
               className="btn btn-ghost btn-lg"
