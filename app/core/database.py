@@ -46,6 +46,19 @@ engine: AsyncEngine = create_async_engine(
 )
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+from sqlalchemy.pool import NullPool
+
+# NullPool sessionmaker for Celery worker processes where tasks invoke separate asyncio.run() calls.
+# NullPool ensures asyncpg connections are never pooled across closed event loops.
+worker_engine = create_async_engine(
+    _engine_url,
+    future=True,
+    echo=False,
+    connect_args=_connect_args,
+    poolclass=NullPool,
+)
+worker_session = sessionmaker(worker_engine, class_=AsyncSession, expire_on_commit=False)
+
 async def get_async_session() -> AsyncSession:
     async with async_session() as session:
         yield session

@@ -10,7 +10,7 @@ from celery.utils.log import get_task_logger
 from sqlalchemy import delete
 from sqlalchemy.exc import DBAPIError, OperationalError
 
-from app.core.database import async_session
+from app.core.database import worker_session as async_session
 from app.models.chunk import Chunk
 from app.models.document import Document
 from app.models.job import Job
