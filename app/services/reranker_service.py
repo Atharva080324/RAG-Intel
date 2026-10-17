@@ -19,7 +19,7 @@ def warm_up_reranker() -> bool:
     if _reranker is None:
         from sentence_transformers import CrossEncoder
 
-        _reranker = CrossEncoder(settings.reranker_model)
+        _reranker = CrossEncoder(settings.reranker_model, device="cpu")
         return True
     return False
 

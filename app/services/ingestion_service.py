@@ -95,7 +95,11 @@ def embed(texts: list[str], *, is_query: bool = False) -> list[list[float]]:
     # Local fallback using sentence-transformers
     if _local_model is None:
         from sentence_transformers import SentenceTransformer
-        _local_model = SentenceTransformer(settings.embedding_model)
+        _local_model = SentenceTransformer(
+            settings.embedding_model,
+            device="cpu",
+            model_kwargs={"low_cpu_mem_usage": False},
+        )
 
     vectors = _local_model.encode(inputs, normalize_embeddings=True)
     result = vectors.tolist() if hasattr(vectors, "tolist") else vectors
