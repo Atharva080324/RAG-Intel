@@ -663,8 +663,163 @@ code, pre {
 .w-full      { width: 100%; }
 .mt-auto     { margin-top: auto; }
 
-/* Responsive */
-@media (max-width: 640px) {
-  .sidebar { display: none; }
-  .content-area { padding: 1rem; }
+/* ── App Shell & Responsive Layout ────────────────────────────────────────── */
+.app-shell-root {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--cream);
 }
+
+.desktop-sidebar {
+  width: 220px;
+  background: var(--black);
+  border-right: 2px solid var(--black);
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem 0.875rem;
+  flex-shrink: 0;
+  gap: 0.35rem;
+  height: 100%;
+}
+
+.mobile-topbar {
+  display: none;
+}
+
+.app-main-content {
+  flex: 1;
+  overflow: auto;
+  background: var(--cream);
+  min-width: 0;
+}
+
+.doc-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* ── Mobile Responsive Overrides ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .app-shell-root {
+    flex-direction: column;
+    height: 100vh;
+  }
+  .desktop-sidebar {
+    display: none;
+  }
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background: var(--black);
+    color: var(--yellow);
+    border-bottom: 2px solid var(--black);
+    flex-shrink: 0;
+    z-index: 50;
+  }
+  .mobile-brand {
+    font-weight: 800;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--yellow);
+  }
+  .mobile-brand span {
+    background: var(--yellow);
+    color: var(--black);
+    padding: 0 4px;
+    margin-left: 4px;
+    border: 2px solid var(--yellow);
+  }
+  .mobile-menu-btn, .mobile-logout-btn {
+    background: transparent;
+    border: 2px solid var(--yellow);
+    color: var(--yellow);
+    border-radius: var(--radius);
+    padding: 0.4rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 2px 2px 0 var(--black);
+  }
+  .mobile-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 200;
+    backdrop-filter: blur(2px);
+    display: flex;
+  }
+  .mobile-drawer {
+    width: 270px;
+    max-width: 82vw;
+    background: var(--black);
+    height: 100%;
+    padding: 1.25rem 1rem;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 4px 0 0 var(--black);
+    animation: slideInLeft 0.2s ease both;
+  }
+  .mobile-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+    margin-bottom: 1.25rem;
+  }
+  .mobile-drawer-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .content-area {
+    padding: 1rem 0.875rem !important;
+  }
+  .page-header {
+    padding: 1rem 0.875rem !important;
+  }
+  .doc-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.875rem;
+    padding: 0.875rem;
+  }
+  .doc-card-actions {
+    display: flex;
+    width: 100%;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    border-top: 1px dashed var(--cream-3);
+    padding-top: 0.75rem;
+  }
+  .hero {
+    padding: 2.5rem 1.25rem !important;
+  }
+  .hero-title {
+    font-size: 2.4rem !important;
+  }
+  .chat-bubble-user {
+    max-width: 90% !important;
+  }
+  .chat-bubble-assistant {
+    max-width: 98% !important;
+  }
+}
+

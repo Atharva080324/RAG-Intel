@@ -82,3 +82,24 @@ describe('documentsApi.upload', () => {
     expect(opts.body).toBeInstanceOf(FormData)
   })
 })
+
+describe('documentsApi.delete', () => {
+  it('sends DELETE request with bearer token', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 204,
+      json: async () => null,
+    })
+    await documentsApi.delete('tok_abc', 42)
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/documents/42'),
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer tok_abc',
+        }),
+      }),
+    )
+  })
+})
+

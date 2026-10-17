@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,7 @@ from app.core.security import get_current_user
 from app.services.document_service import (
     create_document,
     create_ingestion_job,
+    delete_document,
     get_document_by_hash,
     get_document_by_id,
     get_documents_for_user,
@@ -124,3 +125,17 @@ async def document_status(document_id: int, current_user: User = Depends(get_cur
     if not document or document.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
     return {"document_id": document.id, "status": document.status, "updated_at": document.updated_at}
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document_endpoint(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await get_document_by_id(db, document_id)
+    if not document or document.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    await delete_document(db, document)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+

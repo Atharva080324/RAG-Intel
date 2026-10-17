@@ -1,11 +1,11 @@
-/** Documents page – upload + list with retro card design */
-import { useRef, useState, DragEvent } from 'react'
+/** Documents page – upload + list with retro card design, auto-refresh on job complete, delete doc */
+import { useRef, useState, useEffect, DragEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/lib/AuthContext'
 import { documentsApi, jobsApi } from '@/api/client'
 import type { DocumentRead, JobAccepted } from '@/api/client'
-import { FileText, Upload, MessageSquare, AlertTriangle, CheckCircle, Clock, Loader } from 'lucide-react'
+import { FileText, Upload, MessageSquare, AlertTriangle, CheckCircle, Clock, Loader, Trash2 } from 'lucide-react'
 
 const STARTER_QUESTIONS = [
   'Summarise the key findings in this document',
@@ -35,14 +35,31 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function JobTracker({ job, token }: { job: JobAccepted; token: string }) {
+function JobTracker({
+  job,
+  token,
+  onComplete,
+  onChat,
+}: {
+  job: JobAccepted
+  token: string
+  onComplete?: () => void
+  onChat?: (docId: number) => void
+}) {
   const { data } = useQuery({
     queryKey: ['job', job.job_id],
     queryFn: () => jobsApi.get(token, job.job_id),
-    refetchInterval: (query) => (query.state.data?.status === 'completed' || query.state.data?.status === 'failed' ? false : 2000),
+    refetchInterval: (query) => (query.state.data?.status === 'completed' || query.state.data?.status === 'failed' ? false : 1500),
   })
   const st = data?.status ?? 'queued'
   const prog = data?.progress ?? 0
+
+  useEffect(() => {
+    if (st === 'completed') {
+      onComplete?.()
+    }
+  }, [st, onComplete])
+
   return (
     <div style={{ marginTop: '0.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '0.25rem', fontFamily: 'Space Mono, monospace' }}>
@@ -57,6 +74,22 @@ function JobTracker({ job, token }: { job: JobAccepted; token: string }) {
           ✗ {data.error_message}
         </p>
       )}
+      {st === 'completed' && onChat && (
+        <button
+          className="btn btn-primary"
+          style={{
+            marginTop: '0.6rem',
+            fontSize: '0.75rem',
+            padding: '0.4rem 0.75rem',
+            width: '100%',
+            justifyContent: 'center',
+          }}
+          onClick={() => onChat(job.document_id)}
+          id={`btn-job-chat-${job.document_id}`}
+        >
+          <MessageSquare size={13} /> Chat with Document #{job.document_id} →
+        </button>
+      )}
     </div>
   )
 }
@@ -69,11 +102,17 @@ export function DocumentsPage() {
   const [dragging, setDragging] = useState(false)
   const [recentJobs, setRecentJobs] = useState<JobAccepted[]>([])
   const [uploadError, setUploadError] = useState('')
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['documents'],
     queryFn: () => documentsApi.list(token!, 0, 30),
     enabled: !!token,
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? []
+      const hasActive = items.some(d => d.status === 'pending' || d.status === 'queued' || d.status === 'running')
+      return (hasActive || recentJobs.length > 0) ? 2000 : false
+    },
   })
 
   const upload = useMutation({
@@ -85,6 +124,23 @@ export function DocumentsPage() {
     },
     onError: (e: Error) => setUploadError(e.message),
   })
+
+  const deleteDoc = useMutation({
+    mutationFn: (docId: number) => documentsApi.delete(token!, docId),
+    onMutate: (docId) => setDeletingId(docId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['documents'] })
+      setUploadError('')
+    },
+    onError: (e: Error) => setUploadError(e.message),
+    onSettled: () => setDeletingId(null),
+  })
+
+  const handleDelete = (doc: DocumentRead) => {
+    if (window.confirm(`Are you sure you want to delete "${doc.filename}"? This will permanently remove its chunks and index.`)) {
+      deleteDoc.mutate(doc.id)
+    }
+  }
 
   const handleFiles = (files: FileList | null) => {
     if (!files) return
@@ -157,7 +213,14 @@ export function DocumentsPage() {
               {recentJobs.map(j => (
                 <div className="card" key={j.job_id} style={{ padding: '1rem' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>Doc #{j.document_id}</div>
-                  <JobTracker job={j} token={token!} />
+                  <JobTracker
+                    job={j}
+                    token={token!}
+                    onComplete={() => {
+                      void qc.invalidateQueries({ queryKey: ['documents'] })
+                    }}
+                    onChat={docId => navigate(`/chat/${docId}`)}
+                  />
                 </div>
               ))}
             </div>
@@ -206,8 +269,14 @@ export function DocumentsPage() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {data?.items.map((doc, i) => (
-              <DocCard key={doc.id} doc={doc} delay={i * 0.05}
-                onChat={() => navigate(`/chat/${doc.id}`)} />
+              <DocCard
+                key={doc.id}
+                doc={doc}
+                delay={i * 0.05}
+                onChat={() => navigate(`/chat/${doc.id}`)}
+                onDelete={() => handleDelete(doc)}
+                isDeleting={deletingId === doc.id}
+              />
             ))}
           </div>
         </div>
@@ -216,7 +285,19 @@ export function DocumentsPage() {
   )
 }
 
-function DocCard({ doc, delay, onChat }: { doc: DocumentRead; delay: number; onChat: () => void }) {
+function DocCard({
+  doc,
+  delay,
+  onChat,
+  onDelete,
+  isDeleting,
+}: {
+  doc: DocumentRead
+  delay: number
+  onChat: () => void
+  onDelete: () => void
+  isDeleting: boolean
+}) {
   return (
     <div
       className="doc-card"
@@ -235,7 +316,7 @@ function DocCard({ doc, delay, onChat }: { doc: DocumentRead; delay: number; onC
           <div style={{ fontWeight: 700, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {doc.filename}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
             <StatusBadge status={doc.status} />
             <span style={{ fontSize: '0.72rem', color: 'var(--muted)', fontFamily: 'Space Mono, monospace' }}>
               {new Date(doc.created_at).toLocaleDateString()}
@@ -244,16 +325,33 @@ function DocCard({ doc, delay, onChat }: { doc: DocumentRead; delay: number; onC
         </div>
       </div>
 
-      {doc.status === 'completed' && (
+      <div className="doc-card-actions">
+        {doc.status === 'completed' && (
+          <button
+            className="btn btn-primary"
+            onClick={onChat}
+            id={`btn-chat-${doc.id}`}
+            style={{ fontSize: '0.8rem', padding: '0.5rem 0.875rem' }}
+          >
+            <MessageSquare size={14} /> Chat
+          </button>
+        )}
         <button
-          className="btn btn-primary"
-          onClick={onChat}
-          id={`btn-chat-${doc.id}`}
-          style={{ flexShrink: 0, fontSize: '0.8rem', padding: '0.5rem 1rem' }}
+          className="btn btn-ghost"
+          onClick={onDelete}
+          disabled={isDeleting}
+          title="Delete document"
+          id={`btn-delete-${doc.id}`}
+          style={{
+            fontSize: '0.8rem',
+            padding: '0.5rem 0.65rem',
+            color: 'var(--red)',
+            borderColor: 'var(--black)',
+          }}
         >
-          <MessageSquare size={14} /> Chat
+          {isDeleting ? <Loader size={14} className="animate-spin" /> : <Trash2 size={14} />}
         </button>
-      )}
+      </div>
     </div>
   )
 }

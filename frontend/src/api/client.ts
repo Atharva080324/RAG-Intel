@@ -174,6 +174,10 @@ export const documentsApi = {
   get(token: string, id: number): Promise<DocumentRead> {
     return apiFetch(`/documents/${id}`, { token })
   },
+
+  delete(token: string, id: number): Promise<void> {
+    return apiFetch(`/documents/${id}`, { method: 'DELETE', token })
+  },
 }
 
 // ── Jobs ─────────────────────────────────────────────────────────────────────

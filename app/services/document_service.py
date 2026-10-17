@@ -42,3 +42,16 @@ async def update_document_status(db: AsyncSession, document: Document, status: s
     await db.commit()
     await db.refresh(document)
     return document
+
+
+async def delete_document(db: AsyncSession, document: Document) -> None:
+    from app.services.storage import get_storage
+
+    if document.source_path:
+        try:
+            await get_storage().delete(document.source_path)
+        except Exception:
+            pass
+    await db.delete(document)
+    await db.commit()
+

@@ -1,26 +1,101 @@
-/** AppShell – retro dark sidebar + cream content area */
+/** AppShell – retro dark sidebar + cream content area, fully mobile responsive */
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { FileText, LogOut } from 'lucide-react'
+import { FileText, LogOut, Menu, X } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { logout } = useAuth()
   const navigate = useNavigate()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  const handleSignOut = () => {
+    logout()
+    navigate('/')
+  }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      {/* ── Sidebar ── */}
-      <nav style={{
-        width: 220,
-        background: 'var(--black)',
-        borderRight: '2px solid var(--black)',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '1.25rem 0.875rem',
-        flexShrink: 0,
-        gap: '0.35rem',
-      }}>
+    <div className="app-shell-root">
+      {/* ── Mobile topbar (< 768px) ── */}
+      <header className="mobile-topbar">
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setMobileMenuOpen(o => !o)}
+          aria-label="Toggle navigation menu"
+          id="btn-mobile-menu"
+        >
+          {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+        </button>
+
+        <div className="mobile-brand">
+          RAG<span>INTEL</span>
+        </div>
+
+        <button
+          className="mobile-logout-btn"
+          onClick={handleSignOut}
+          title="Sign Out"
+          aria-label="Sign Out"
+          id="btn-mobile-logout"
+        >
+          <LogOut size={16} />
+        </button>
+      </header>
+
+      {/* ── Mobile Drawer Backdrop & Menu ── */}
+      {mobileMenuOpen && (
+        <div className="mobile-drawer-backdrop" onClick={() => setMobileMenuOpen(false)}>
+          <div className="mobile-drawer" onClick={e => e.stopPropagation()}>
+            <div className="mobile-drawer-header">
+              <div className="mobile-brand">
+                RAG<span>INTEL</span>
+              </div>
+              <button
+                className="btn btn-ghost"
+                style={{ padding: '0.3rem 0.5rem', color: 'var(--yellow)', borderColor: 'var(--yellow)' }}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="mobile-drawer-body">
+              <NavLink
+                to="/documents"
+                id="nav-mobile-documents"
+                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <FileText size={16} />
+                Documents
+              </NavLink>
+              <button
+                id="btn-drawer-logout"
+                className="nav-item"
+                style={{
+                  width: '100%',
+                  background: 'transparent',
+                  border: '2px solid transparent',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  marginTop: '1rem',
+                  color: 'var(--yellow)',
+                }}
+                onClick={() => {
+                  setMobileMenuOpen(false)
+                  handleSignOut()
+                }}
+              >
+                <LogOut size={16} />
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Desktop Sidebar ── */}
+      <nav className="desktop-sidebar">
         {/* Brand */}
         <div style={{ marginBottom: '1.75rem', paddingBottom: '1rem', borderBottom: '2px solid #ffffff20' }}>
           <div style={{
@@ -53,7 +128,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button
             id="btn-logout"
             className="nav-item"
-            onClick={() => { logout(); navigate('/') }}
+            onClick={handleSignOut}
             style={{ width: '100%', background: 'transparent', border: '2px solid transparent', cursor: 'pointer', textAlign: 'left' }}
           >
             <LogOut size={15} />
@@ -62,10 +137,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </nav>
 
-      {/* ── Main ── */}
-      <main style={{ flex: 1, overflow: 'auto', background: 'var(--cream)' }}>
+      {/* ── Main Content Area ── */}
+      <main className="app-main-content">
         {children}
       </main>
     </div>
   )
 }
+

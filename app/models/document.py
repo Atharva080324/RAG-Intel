@@ -19,6 +19,6 @@ class Document(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     owner = relationship("User", back_populates="documents")
-    pages = relationship("Page", back_populates="document")
-    chunks = relationship("Chunk", back_populates="document")
+    pages = relationship("Page", back_populates="document", cascade="all, delete-orphan")
+    chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
     jobs = relationship("Job", back_populates="document", cascade="all, delete-orphan")

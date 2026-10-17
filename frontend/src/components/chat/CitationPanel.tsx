@@ -14,14 +14,24 @@ export function CitationPanel({ citation, onClose }: Props) {
   if (!citation) return null
 
   return (
-    <div style={{
-      position: 'fixed', right: 0, top: 0, bottom: 0, width: 320,
-      background: 'var(--surface)', borderLeft: '2px solid var(--black)',
-      boxShadow: '-4px 0 0 var(--black)',
-      display: 'flex', flexDirection: 'column',
-      zIndex: 100,
-      animation: 'fadeInUp 0.2s ease both',
-    }}>
+    <div
+      className="citation-panel-container"
+      style={{
+        position: 'fixed',
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: 'min(360px, 100vw)',
+        maxWidth: '100vw',
+        background: 'var(--surface)',
+        borderLeft: '2px solid var(--black)',
+        boxShadow: '-4px 0 0 var(--black)',
+        display: 'flex',
+        flexDirection: 'column',
+        zIndex: 100,
+        animation: 'fadeInUp 0.2s ease both',
+      }}
+    >
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
