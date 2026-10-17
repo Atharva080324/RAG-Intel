@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,6 +17,7 @@ from app.services.analytics_service import analyze_table_question
 from app.services.rate_limit_service import TooManyRequestsError, check_daily_cap
 from app.services.retrieval_service import retrieve_document_chunks_with_diagnostics
 
+logger = logging.getLogger("questions")
 router = APIRouter()
 
 
