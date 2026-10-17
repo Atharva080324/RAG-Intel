@@ -50,9 +50,6 @@ services:
 
   # ── One-shot migration ───────────────────────────────────────────────────────
   migrate:
-    build:
-      context: .
-      target: runtime
     image: rag-app:latest
     command: ["alembic", "upgrade", "head"]
     env_file: .env.production
@@ -98,9 +95,6 @@ services:
 
   # ── Celery worker ────────────────────────────────────────────────────────────
   worker:
-    build:
-      context: .
-      target: runtime
     image: rag-app:latest
     mem_limit: 2.5g
     command:
