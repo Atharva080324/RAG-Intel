@@ -38,12 +38,8 @@
         -Server
     }
 
-    # Compress responses for non-streaming endpoints (zstd is fast & lightweight on ARM).
-    encode {
-        zstd gzip
-        # Do NOT compress text/event-stream — that would add buffering.
-        except_path /questions/stream
-    }
+    # Compress responses for non-streaming endpoints
+    encode gzip zstd
 
     # Health and readiness endpoints: accept without auth header for uptime monitors.
     @health path /health /ready
