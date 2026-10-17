@@ -233,7 +233,8 @@ async def demo_login(request: Request, db: AsyncSession = Depends(get_db)) -> To
         is_active=True,
     )
     db.add(session_user)
-    await db.flush()
+    await db.commit()
+    await db.refresh(session_user)
 
     # 3. Clone seeded sample documents from master demo user (if master user has documents)
     try:
