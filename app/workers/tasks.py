@@ -102,7 +102,7 @@ async def _process_document(job_id: int, attempt: int) -> dict[str, int | str] |
         file_ext = Path(source_key).suffix.lower()
         with tempfile.TemporaryDirectory() as tmp_dir:
             local_path = Path(tmp_dir) / f"source{file_ext}"
-            local_path.write_bytes(await get_storage().download(source_key))
+            local_path.write_bytes(await get_storage().download(source_key, session=db))
             pages = extract_pdf(str(local_path)) if file_ext == ".pdf" else extract_text(str(local_path))
         if not any(page.text or page.tables for page in pages):
             raise ValueError("No extractable content found")

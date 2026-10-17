@@ -18,7 +18,8 @@ from typing import Protocol
 from sqlalchemy import delete, select
 
 from app.core.config import settings
-from app.core.database import async_session
+from app.core.database import async_session, worker_session
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.stored_file import StoredFile
 
 
@@ -28,8 +29,8 @@ class ObjectStorageError(RuntimeError):
 
 class ObjectStorage(Protocol):
     async def upload(self, key: str, content: bytes) -> None: ...
-    async def download(self, key: str) -> bytes: ...
-    async def delete(self, key: str) -> None: ...
+    async def download(self, key: str, session: AsyncSession | None = None) -> bytes: ...
+    async def delete(self, key: str, session: AsyncSession | None = None) -> None: ...
 
 
 class PostgresStorage:
@@ -41,7 +42,7 @@ class PostgresStorage:
     """
 
     async def upload(self, key: str, content: bytes) -> None:
-        async with async_session() as db:
+        async with worker_session() as db:
             existing = (
                 await db.execute(select(StoredFile).where(StoredFile.key == key))
             ).scalar_one_or_none()
@@ -51,17 +52,30 @@ class PostgresStorage:
                 db.add(StoredFile(key=key, content=content))
             await db.commit()
 
-    async def download(self, key: str) -> bytes:
-        async with async_session() as db:
+    async def download(self, key: str, session: AsyncSession | None = None) -> bytes:
+        if session is not None:
+            row = (
+                await session.execute(select(StoredFile).where(StoredFile.key == key))
+            ).scalar_one_or_none()
+            if row is None:
+                raise ObjectStorageError(f"Stored object not found: {key}")
+            return row.content
+
+        async with worker_session() as db:
             row = (
                 await db.execute(select(StoredFile).where(StoredFile.key == key))
             ).scalar_one_or_none()
-        if row is None:
-            raise ObjectStorageError(f"Stored object not found: {key}")
-        return row.content
+            if row is None:
+                raise ObjectStorageError(f"Stored object not found: {key}")
+            return row.content
 
-    async def delete(self, key: str) -> None:
-        async with async_session() as db:
+    async def delete(self, key: str, session: AsyncSession | None = None) -> None:
+        if session is not None:
+            await session.execute(delete(StoredFile).where(StoredFile.key == key))
+            await session.commit()
+            return
+
+        async with worker_session() as db:
             await db.execute(delete(StoredFile).where(StoredFile.key == key))
             await db.commit()
 
