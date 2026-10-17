@@ -6,7 +6,7 @@
  * domain (prod via Vercel env vars).
  */
 
-const BASE = (import.meta.env.VITE_API_BASE as string | undefined ?? 'http://127.0.0.1:8000').replace(/\/$/, '')
+const BASE = (import.meta.env.VITE_API_BASE as string | undefined ?? '').replace(/\/$/, '')
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

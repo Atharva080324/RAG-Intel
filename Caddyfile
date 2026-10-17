@@ -9,42 +9,38 @@
 {$API_DOMAIN} {
     # Automatic HTTPS via Let's Encrypt (Caddy handles cert issuance/renewal).
 
-    # Reverse-proxy all traffic to the API container.
-    reverse_proxy api:8000 {
-        # SSE / streaming: flush every byte immediately so the browser receives
-        # tokens from /questions/stream without buffering.
-        # -1 means "flush immediately" in Caddy 2.
-        flush_interval -1
-
-        # Transport tuning: fast dial timeout and generous response header timeout for LLM generation
-        transport http {
-            dial_timeout 5s
-            response_header_timeout 60s
-        }
-
-        # Pass the real client IP through (used by the IP-based rate limiter).
-        header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
-    }
-
-    # Security headers (supplements the SecurityHeadersMiddleware already in FastAPI).
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options nosniff
-        X-Frame-Options DENY
-        Referrer-Policy strict-origin-when-cross-origin
-        # Strip Server header
-        -Server
-    }
-
     # Compress responses for non-streaming endpoints
     encode gzip zstd
 
-    # Health and readiness endpoints: accept without auth header for uptime monitors.
-    @health path /health /ready
-    handle @health {
-        reverse_proxy api:8000
+    # Route API endpoints directly to FastAPI
+    @api path /auth /auth/* /documents /documents/* /jobs /jobs/* /questions /questions/* /health /ready /docs /openapi.json /redoc
+    handle @api {
+        reverse_proxy api:8000 {
+            flush_interval -1
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 60s
+            }
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # SPA Frontend fallback
+    handle {
+        root * /var/www/html
+        try_files {path} /index.html
+        file_server
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options nosniff
+        X-Frame-Options SAMEORIGIN
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
     }
 
     log {

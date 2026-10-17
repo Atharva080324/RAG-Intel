@@ -147,6 +147,7 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend/dist:/var/www/html:ro
       - caddydata:/data
       - caddyconfig:/config
     environment:
