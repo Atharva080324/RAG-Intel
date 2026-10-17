@@ -21,12 +21,12 @@
 set -euo pipefail
 
 LOG_PREFIX="[keepalive $(date -u '+%Y-%m-%dT%H:%M:%SZ')]"
-API_URL="${API_URL:-http://localhost:80}"
+API_URL="${API_URL:-https://rag-intel.duckdns.org}"
 
 echo "$LOG_PREFIX Starting periodic health & system audit..."
 
 # 1. API Liveness Probe
-HEALTH_STATUS=$(curl -sL -k -o /dev/null -w "%{http_code}" --max-time 10 "${API_URL}/health" || echo "000")
+HEALTH_STATUS=$(curl -s -k -o /dev/null -w "%{response_code}" --max-time 10 "${API_URL}/health" || echo "000")
 if [ "$HEALTH_STATUS" = "200" ]; then
     echo "$LOG_PREFIX API /health: OK (200)"
 else
@@ -34,7 +34,7 @@ else
 fi
 
 # 2. API Readiness Probe (checks DB & Redis dependencies)
-READY_STATUS=$(curl -sL -k -o /dev/null -w "%{http_code}" --max-time 10 "${API_URL}/ready" || echo "000")
+READY_STATUS=$(curl -s -k -o /dev/null -w "%{response_code}" --max-time 10 "${API_URL}/ready" || echo "000")
 if [ "$READY_STATUS" = "200" ]; then
     echo "$LOG_PREFIX API /ready: OK (Dependencies healthy)"
 else
