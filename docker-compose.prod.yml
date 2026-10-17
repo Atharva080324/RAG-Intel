@@ -19,7 +19,6 @@ services:
   # ── Database ────────────────────────────────────────────────────────────────
   db:
     image: pgvector/pgvector:pg16
-    platform: linux/arm64
     restart: unless-stopped
     mem_limit: 2g
     environment:
@@ -38,7 +37,6 @@ services:
   # ── Redis ───────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    platform: linux/arm64
     restart: unless-stopped
     mem_limit: 512m
     command: redis-server --save 60 1 --loglevel warning
@@ -55,7 +53,6 @@ services:
     build:
       context: .
       target: runtime
-    platform: linux/arm64
     image: rag-app:latest
     command: ["alembic", "upgrade", "head"]
     env_file: .env.production
@@ -71,7 +68,6 @@ services:
     build:
       context: .
       target: runtime
-    platform: linux/arm64
     image: rag-app:latest
     restart: unless-stopped
     mem_limit: 2.5g
@@ -105,7 +101,6 @@ services:
     build:
       context: .
       target: runtime
-    platform: linux/arm64
     image: rag-app:latest
     mem_limit: 2.5g
     command:
@@ -143,7 +138,6 @@ services:
   # ── Caddy (HTTPS reverse proxy) ──────────────────────────────────────────────
   caddy:
     image: caddy:2-alpine
-    platform: linux/arm64
     restart: unless-stopped
     mem_limit: 256m
     ports:
