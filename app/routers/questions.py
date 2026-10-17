@@ -128,8 +128,9 @@ async def stream_answer(
                 yield _sse("token", {"text": token})
             yield _sse("citations", citations)
             yield _sse("done", {})
-        except Exception:
-            yield _sse("error", {"detail": "Answer generation failed"})
+        except Exception as exc:
+            logger.exception("Answer generation failed in stream: %s", exc)
+            yield _sse("error", {"detail": f"Answer generation failed: {exc}"})
 
     return StreamingResponse(
         event_stream(),
