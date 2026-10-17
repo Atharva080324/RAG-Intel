@@ -79,6 +79,9 @@ services:
       HF_HOME: /app/.cache/huggingface
     volumes:
       - hfcache:/app/.cache/huggingface
+      - ./app:/app/app:ro
+      - ./scripts:/app/scripts:ro
+      - ./samples:/app/samples:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -116,6 +119,9 @@ services:
       HF_HOME: /app/.cache/huggingface
     volumes:
       - hfcache:/app/.cache/huggingface
+      - ./app:/app/app:ro
+      - ./scripts:/app/scripts:ro
+      - ./samples:/app/samples:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
